@@ -1,0 +1,12 @@
+[package]
+name = "pipeline"
+version = "0.1.0"
+edition = "2021"
+description = "Pipeline orchestration: fetch → textify → analyze"
+
+[dependencies]
+core = { path = "../core" }
+sources = { path = "../sources" }
+textifier = { path = "../textifier" }
+analyzer = { path = "../analyzer" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CLI tool (Python) to extract structured Chinese recipes from 小红书 (Xiaohongshu / RedNote) post URLs. It fetches note content via Playwright (headless Chromium), transcribes video audio with yt-dlp + faster-whisper, and extracts structured recipe data via LLM API.
+CLI tool to extract structured Chinese recipes from 小红书 (Xiaohongshu / RedNote) post URLs. 
+
+**Python version** (original): fetches note content via Playwright, transcribes video audio with yt-dlp + faster-whisper, and extracts structured recipe data via LLM API.
+
+**Rust version** (in progress): same layered architecture, with Python bridge scripts for Playwright scraping and faster-whisper transcription. The Rust binary `xhs-recipe` is a drop-in replacement.
 
 ## Build & Run
 
@@ -91,3 +95,64 @@ xhs_recipe/
 - **Image selection**：仅发送最多 3 张图片给 LLM（`--images`/`--no-images` 控制）
 - **Fallback chain for scraping**：`__NEXT_DATA__` → DOM selectors → API response interception
 - **CLI uses typer** with rich for terminal output
+
+## Rust
+
+Rust rewrite (functionally complete for `extract` command). The workspace mirrors the Python architecture one-to-one. Python bridge scripts handle Playwright scraping and faster-whisper transcription.
+
+```bash
+# Build all crates
+cargo build --workspace
+
+# Run (drop-in replacement for Python xhs-recipe)
+cargo run -- extract <xhs-url>
+cargo run -- extract <xhs-url> --output recipe.md
+cargo run -- extract <xhs-url> --no-images
+cargo run -- setup
+cargo run -- login [--headless]
+cargo run -- logout
+
+# Test
+cargo test --workspace
+
+# Run all 44 tests
+cargo test --workspace
+
+# Run specific crate tests
+cargo test -p core         # 3 tests (models)
+cargo test -p analyzer     # 22 tests (LLM parsing, images, fallback)
+cargo test -p presentation # 6 tests (terminal render, golden file save)
+cargo test -p sources      # 3 tests (URL routing)
+cargo test -p textifier    # 1 test (text assembly)
+cargo test -p pipeline     # 2 tests (orchestration)
+cargo test -p cli          # 7 tests (argument parsing)
+
+# Run with real URL (requires network + API key + cookies)
+cargo run -- extract <xhs-url>
+cargo run -- extract <xhs-url> --output recipe.md
+```
+
+### Architecture
+
+```
+cargo run -- extract <url>
+  → cli/src/main.rs          # Clap CLI
+  → pipeline/src/lib.rs      # fetch → textify → analyze
+    → sources/src/base.rs    # Python bridge: python3 scripts/fetch_raw.py
+    → textifier/src/lib.rs   # yt-dlp + ffmpeg + Python bridge: scripts/transcribe.py
+    → analyzer/src/lib.rs    # reqwest → DeepSeek API (function calling)
+  → presentation/src/        # Terminal render + .md/.json save
+```
+
+### Rust Crate Layout
+
+```
+crates/
+├── core/            # Data models (serde)
+├── presentation/    # Terminal output + file save
+├── analyzer/        # LLM function calling (reqwest)
+├── textifier/       # Video download + transcription
+├── sources/         # Source adapters (multi-platform)
+├── pipeline/        # Orchestration
+└── cli/             # Binary (clap)
+```

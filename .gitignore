@@ -7,3 +7,5 @@ build/
 .video_cache/
 .venv/
 .venv312/
+# Rust
+target/
