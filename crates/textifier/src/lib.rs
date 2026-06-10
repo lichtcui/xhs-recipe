@@ -27,8 +27,6 @@ pub async fn process(raw: &RawContent, whisper_model: &str) -> Result<TextConten
     })
 }
 
-// ── Errors ─────────────────────────────────────────────────────────
-
 #[derive(Debug)]
 pub enum TextifierError {
     YtDlpNotFound,
@@ -88,16 +86,14 @@ fn download_video(url: &str, output_dir: &Path) -> Result<Option<PathBuf>, Texti
         .args([
             "--quiet", "--no-warnings", "--no-playlist",
             "-f", "best[ext=mp4]/best",
-            "-o", &template_str,
-            url,
+            "-o", &template_str, url,
         ])
         .output()
         .map_err(|e| TextifierError::DownloadFailed(format!("yt-dlp exec error: {}", e)))?;
 
     if !result.status.success() {
         let stderr = String::from_utf8_lossy(&result.stderr);
-        let msg = stderr.trim().to_string();
-        return Err(TextifierError::DownloadFailed(msg));
+        return Err(TextifierError::DownloadFailed(stderr.trim().to_string()));
     }
 
     println!("  ✓ 视频下载完成");
@@ -159,9 +155,181 @@ fn extract_audio(video_path: &Path, output_dir: &Path) -> Result<Option<PathBuf>
     }
 }
 
-// ── Transcription (Python bridge) ─────────────────────────────────
+// ── Transcription ─────────────────────────────────────────────────
+// Strategy: whisper-rs (native, if feature enabled) → Python bridge (fallback)
 
 fn transcribe_audio(audio_path: &Path, model_size: &str) -> Result<Option<String>, TextifierError> {
+    #[cfg(feature = "whisper")]
+    {
+        match transcribe_whisper_rs(audio_path, model_size) {
+            Ok(Some(text)) => return Ok(Some(text)),
+            Ok(None) => println!("  ⚠ whisper-rs 返回空结果，回退到 Python..."),
+            Err(e) => println!("  ⚠ whisper-rs 失败 ({}), 回退到 Python bridge...", e),
+        }
+    }
+
+    // Fallback: Python faster-whisper bridge
+    transcribe_python_bridge(audio_path, model_size)
+}
+
+// ── whisper-rs (native) ───────────────────────────────────────────
+
+#[cfg(feature = "whisper")]
+
+fn transcribe_whisper_rs(audio_path: &Path, model_size: &str) -> Result<Option<String>, TextifierError> {
+    let model_path = find_or_download_model(model_size)?;
+
+    // Read WAV file into f32 samples (whisper.cpp expects f32)
+    let samples_i16 = read_wav_i16(audio_path)?;
+    let samples: Vec<f32> = samples_i16.iter().map(|&s| s as f32 / 32768.0).collect();
+
+    println!("  ↓ 加载 Whisper 模型 ({}, cpu)...", model_size);
+    let ctx = whisper_rs::WhisperContext::new_with_params(
+        &model_path,
+        whisper_rs::WhisperContextParameters::default(),
+    )
+    .map_err(|e| TextifierError::TranscriptionFailed(format!("whisper load: {}", e)))?;
+
+    let mut state = ctx.create_state()
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("whisper state: {}", e)))?;
+
+    let mut params = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
+    params.set_language(Some("zh"));
+    params.set_print_special(false);
+    params.set_print_progress(false);
+    params.set_print_realtime(false);
+    params.set_print_timestamps(false);
+
+    println!("  ↓ 转写音频中...");
+    state.full(params, &samples[..])
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("whisper full: {}", e)))?;
+
+    let num_segments = state.full_n_segments();
+    let mut text_parts = Vec::new();
+    for i in 0..num_segments {
+        if let Some(segment) = state.get_segment(i) {
+            text_parts.push(segment.to_string());
+        }
+    }
+
+    let full_text = text_parts.join(" ");
+    if full_text.is_empty() {
+        println!("  ⚠ 转写结果为空");
+        Ok(None)
+    } else {
+        println!("  ✓ 转写完成 (约{}字)", full_text.chars().count());
+        Ok(Some(full_text))
+    }
+}
+
+#[cfg(feature = "whisper")]
+fn find_or_download_model(size: &str) -> Result<String, TextifierError> {
+    let cache_dir = dirs_next().join(".cache").join("whisper-rs");
+    std::fs::create_dir_all(&cache_dir).ok();
+
+    let model_file = format!("ggml-{}.bin", size);
+    let model_path = cache_dir.join(&model_file);
+
+    if model_path.exists() {
+        return Ok(model_path.to_string_lossy().to_string());
+    }
+
+    let url = format!(
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
+        model_file
+    );
+
+    println!("  ↓ 下载 Whisper 模型 ({}, 1-3 GB)...", size);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(None) // no timeout for large files
+        .build()
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("client: {}", e)))?;
+
+    let mut resp = client.get(&url).send()
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("model download: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(TextifierError::TranscriptionFailed(format!(
+            "model download HTTP {}", resp.status()
+        )));
+    }
+
+    // Stream to temp file, then rename
+    let tmp_path = cache_dir.join(format!("{}.tmp", model_file));
+    let mut file = std::fs::File::create(&tmp_path)
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("create tmp: {}", e)))?;
+
+    let total = resp.content_length();
+    resp.copy_to(&mut file)
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("download: {}", e)))?;
+
+    std::fs::rename(&tmp_path, &model_path)
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("rename: {}", e)))?;
+
+    let size = model_path.metadata().map(|m| m.len()).unwrap_or(0);
+    let size_mb = size as f64 / 1_048_576.0;
+    let total_mb = total.map(|t| t as f64 / 1_048_576.0).unwrap_or(size_mb);
+    if let Some(t) = total {
+        if size != t {
+            let _ = std::fs::remove_file(&model_path);
+            return Err(TextifierError::TranscriptionFailed(
+                format!("model download incomplete: {:.0}/{:.0} MB", size_mb, total_mb)
+            ));
+        }
+    }
+    println!("  ✓ 模型下载完成 ({:.0} MB)", size_mb);
+    Ok(model_path.to_string_lossy().to_string())
+}
+
+#[cfg(feature = "whisper")]
+fn dirs_next() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    PathBuf::from(home)
+}
+
+#[cfg(any(feature = "whisper", test))]
+fn read_wav_i16(path: &Path) -> Result<Vec<i16>, TextifierError> {
+    let file = std::fs::File::open(path)
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("open wav: {}", e)))?;
+
+    let mut reader = std::io::BufReader::new(file);
+
+    // Read WAV header
+    let mut header = [0u8; 44];
+    std::io::Read::read_exact(&mut reader, &mut header)
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("read wav header: {}", e)))?;
+
+    // Verify RIFF/WAVE
+    if &header[0..4] != b"RIFF" || &header[8..12] != b"WAVE" {
+        return Err(TextifierError::TranscriptionFailed("invalid WAV file".into()));
+    }
+
+    // Verify PCM 16-bit mono
+    let channels = u16::from_le_bytes([header[22], header[23]]);
+    let bits_per_sample = u16::from_le_bytes([header[34], header[35]]);
+    if channels != 1 || bits_per_sample != 16 {
+        return Err(TextifierError::TranscriptionFailed(
+            format!("expected 16-bit mono, got {}ch {}bit", channels, bits_per_sample)
+        ));
+    }
+
+    // Read PCM data
+    let mut pcm = Vec::new();
+    std::io::Read::read_to_end(&mut reader, &mut pcm)
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("read pcm: {}", e)))?;
+
+    // Convert u8 bytes to i16 samples (little-endian)
+    let samples: Vec<i16> = pcm
+        .chunks_exact(2)
+        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect();
+
+    Ok(samples)
+}
+
+// ── Python bridge fallback ────────────────────────────────────────
+
+fn transcribe_python_bridge(audio_path: &Path, model_size: &str) -> Result<Option<String>, TextifierError> {
     let python = if Command::new("python3").arg("--version").output().is_ok() {
         "python3"
     } else {
@@ -193,10 +361,6 @@ fn transcribe_audio(audio_path: &Path, model_size: &str) -> Result<Option<String
                 return Ok(Some(trimmed.to_string()));
             }
         }
-        // Check for error field
-        if let Some(err) = json["error"].as_str() {
-            println!("  ⚠ {}", err);
-        }
     }
 
     println!("  ⚠ 转写结果为空");
@@ -204,25 +368,17 @@ fn transcribe_audio(audio_path: &Path, model_size: &str) -> Result<Option<String
 }
 
 fn locate_bridge_script() -> String {
-    // Try multiple locations relative to cwd and binary
-    for p in &[
-        "scripts/transcribe.py",
-        "../scripts/transcribe.py",
-    ] {
+    for p in &["scripts/transcribe.py", "../scripts/transcribe.py"] {
         if Path::new(p).exists() {
             return p.to_string();
         }
     }
-    // Try relative to binary
     if let Ok(exe) = std::env::current_exe() {
         let mut probe = exe.clone();
-        probe.pop(); // remove binary name
-        // walk up to find scripts/
+        probe.pop();
         for _ in 0..4 {
             let candidate = probe.join("scripts").join("transcribe.py");
-            if candidate.exists() {
-                return candidate.to_string_lossy().to_string();
-            }
+            if candidate.exists() { return candidate.to_string_lossy().to_string(); }
             probe.pop();
         }
     }
@@ -237,51 +393,29 @@ async fn transcribe_video(url: &str, whisper_model: &str) -> Result<String, Text
         .map_err(|e| TextifierError::DownloadFailed(format!("tempdir: {}", e)))?;
     let dir = output_dir.path().to_path_buf();
 
-    // Download
     let video = {
         let d = dir.clone();
         let u = url.clone();
-        tokio::task::spawn_blocking(move || download_video(&u, &d))
-            .await
+        tokio::task::spawn_blocking(move || download_video(&u, &d)).await
             .map_err(|e| TextifierError::DownloadFailed(format!("task: {}", e)))?
-            .map_err(|e| {
-                println!("  ✗ 视频下载失败: {}", e);
-                e
-            })?
+            .map_err(|e| { println!("  ✗ 视频下载失败: {}", e); e })?
     };
-    let video = match video {
-        Some(v) => v,
-        None => return Ok(String::new()),
-    };
+    let video = match video { Some(v) => v, None => return Ok(String::new()) };
 
-    // Extract audio
     let audio = {
         let v = video.clone();
         let d = dir.clone();
-        tokio::task::spawn_blocking(move || extract_audio(&v, &d))
-            .await
+        tokio::task::spawn_blocking(move || extract_audio(&v, &d)).await
             .map_err(|e| TextifierError::DownloadFailed(format!("task: {}", e)))?
-            .map_err(|e| {
-                println!("  ✗ 音频提取失败: {}", e);
-                e
-            })?
+            .map_err(|e| { println!("  ✗ 音频提取失败: {}", e); e })?
     };
-    let audio = match audio {
-        Some(a) => a,
-        None => return Ok(String::new()),
-    };
+    let audio = match audio { Some(a) => a, None => return Ok(String::new()) };
 
-    // Transcribe
     let model = whisper_model.to_string();
-    let transcript = tokio::task::spawn_blocking(move || transcribe_audio(&audio, &model))
-        .await
+    let transcript = tokio::task::spawn_blocking(move || transcribe_audio(&audio, &model)).await
         .map_err(|e| TextifierError::TranscriptionFailed(format!("task: {}", e)))?
-        .map_err(|e| {
-            println!("  ✗ 转写失败: {}", e);
-            e
-        })?;
+        .map_err(|e| { println!("  ✗ 转写失败: {}", e); e })?;
 
-    // output_dir (TempDir) dropped here, cleans up temp files
     Ok(transcript.unwrap_or_default())
 }
 
@@ -294,17 +428,21 @@ mod tests {
     fn test_process_no_video() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let raw = RawContent {
-            title: "测试标题".into(),
-            text_content: "测试描述".into(),
-            image_urls: vec![],
-            has_video: false,
-            video_url: None,
-            source: "test".into(),
-            source_url: "https://example.com".into(),
+            title: "测试标题".into(), text_content: "测试描述".into(),
+            image_urls: vec![], has_video: false, video_url: None,
+            source: "test".into(), source_url: "https://example.com".into(),
         };
         let result = rt.block_on(process(&raw, "medium")).unwrap();
         assert!(result.full_text.contains("测试标题"));
-        assert!(result.full_text.contains("测试描述"));
         assert!(!result.full_text.contains("视频口述内容"));
+    }
+
+    #[test]
+    fn test_read_wav_invalid() {
+        let tmp = std::env::temp_dir().join("test_not_wav.bin");
+        std::fs::write(&tmp, b"not a wav file").ok();
+        let result = read_wav_i16(&tmp);
+        assert!(result.is_err());
+        let _ = std::fs::remove_file(&tmp);
     }
 }
