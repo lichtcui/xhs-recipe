@@ -256,7 +256,12 @@ fn parse_response(response: Value) -> Result<Recipe, AnalyzerError> {
                     let args = tc["function"]["arguments"]
                         .as_str()
                         .ok_or_else(|| AnalyzerError::ParseError("missing arguments".into()))?;
-                    let data: Value = serde_json::from_str(args)
+                    // Try direct parse first, then repair if needed
+                    let data = serde_json::from_str::<Value>(args)
+                        .or_else(|first_err| {
+                            println!("  ⚠ JSON 格式错误 ({}), 尝试修复...", first_err);
+                            repair_json(args)
+                        })
                         .map_err(|e| AnalyzerError::ParseError(format!("invalid JSON in tool call: {}", e)))?;
                     return Ok(parse_recipe_data(&data));
                 }
@@ -272,6 +277,102 @@ fn parse_response(response: Value) -> Result<Recipe, AnalyzerError> {
     }
 
     Err(AnalyzerError::ParseError("no structured data in response".into()))
+}
+
+/// Repair common LLM JSON errors: truncation, trailing commas, unclosed brackets.
+fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
+    let trimmed = raw.trim();
+
+    // Try direct parse first
+    if let Ok(v) = serde_json::from_str(trimmed) {
+        return Ok(v);
+    }
+
+    // Common fix 1: remove trailing commas before ] or }
+    let fixed = regex::Regex::new(r",(\s*[}\]])")
+        .ok()
+        .map(|re| re.replace_all(trimmed, "$1").to_string());
+
+    if let Some(ref s) = fixed {
+        if let Ok(v) = serde_json::from_str(s.as_str()) {
+            println!("  ✓ 修复 trailing comma 成功");
+            return Ok(v);
+        }
+    }
+
+    // Common fix 2: close unclosed strings, arrays, objects
+    let repaired = close_unclosed(trimmed);
+    if let Ok(v) = serde_json::from_str(&repaired) {
+        println!("  ✓ 修复未闭合 JSON 成功");
+        return Ok(v);
+    }
+
+    // One more attempt: remove trailing comma THEN close
+    if let Some(ref s) = fixed {
+        let repaired = close_unclosed(s);
+        if let Ok(v) = serde_json::from_str(&repaired) {
+            println!("  ✓ 修复 JSON 成功 (trailing comma + unclosed)");
+            return Ok(v);
+        }
+    }
+
+    // Return original error
+    serde_json::from_str(trimmed)
+}
+
+/// Close unclosed strings, arrays, and objects in truncated JSON.
+fn close_unclosed(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() + 10);
+    let mut in_string = false;
+    let mut escape = false;
+    let mut stack: Vec<char> = Vec::new();
+
+    for ch in s.chars() {
+        result.push(ch);
+
+        if escape {
+            escape = false;
+            continue;
+        }
+        if ch == '\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if ch == '"' && !escape {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+        match ch {
+            '{' => stack.push('}'),
+            '[' => stack.push(']'),
+            '}' | ']' => {
+                if stack.last() == Some(&ch) {
+                    stack.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Close unclosed string
+    if in_string {
+        result.push('"');
+    }
+
+    // Remove trailing comma before closing brackets
+    while result.ends_with(',') || result.ends_with('\n') || result.ends_with(' ') {
+        result.pop();
+    }
+
+    // Close unclosed brackets
+    while let Some(ch) = stack.pop() {
+        result.push(ch);
+    }
+
+    result
 }
 
 fn parse_recipe_data(data: &Value) -> Recipe {

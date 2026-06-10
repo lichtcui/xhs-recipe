@@ -13,7 +13,7 @@ pub fn supports_url(url: &str) -> bool {
     base::supports_url(url)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SourceError {
     Unsupported(String),
     FetchFailed(String),

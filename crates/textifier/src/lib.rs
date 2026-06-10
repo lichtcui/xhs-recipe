@@ -234,49 +234,97 @@ fn find_or_download_model(size: &str) -> Result<String, TextifierError> {
         return Ok(model_path.to_string_lossy().to_string());
     }
 
-    let url = format!(
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
-        model_file
-    );
+    // Clean up stale partial download from previous interrupted run
+    let tmp_path = cache_dir.join(format!("{}.tmp", model_file));
+    if tmp_path.exists() {
+        println!("  ↓ 清除上次未完成的下载缓存...");
+        let _ = std::fs::remove_file(&tmp_path);
+    }
 
-    println!("  ↓ 下载 Whisper 模型 ({}, 1-3 GB)...", size);
+    // Try multiple mirrors in case HuggingFace is slow/unreachable
+    let urls: [&str; 3] = [
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main",
+        "https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main",
+        "https://cdn-lfs-us-1.hf.co/repos/ggerganov/whisper.cpp/resolve/main",
+    ];
+
+    println!("  ↓ 下载 Whisper 模型 ({}, 约 1-3 GB，请耐心等待)...", size);
+
     let client = reqwest::blocking::Client::builder()
         .timeout(None) // no timeout for large files
         .build()
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("client: {}", e)))?;
+        .map_err(|e| TextifierError::DownloadFailed(format!("client: {}", e)))?;
 
-    let mut resp = client.get(&url).send()
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("model download: {}", e)))?;
+    let mut last_err = String::new();
+    for (i, base) in urls.iter().enumerate() {
+        if i > 0 {
+            println!("  ↓ 尝试镜像 {} ...", base);
+            // Clean up partial from previous attempt
+            let _ = std::fs::remove_file(&tmp_path);
+        }
 
-    if !resp.status().is_success() {
-        return Err(TextifierError::TranscriptionFailed(format!(
-            "model download HTTP {}", resp.status()
-        )));
+        let url = format!("{}/{}", base, model_file);
+        match try_download(&client, &url, &tmp_path, &model_path) {
+            Ok(path) => return Ok(path),
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        }
     }
 
-    // Stream to temp file, then rename
-    let tmp_path = cache_dir.join(format!("{}.tmp", model_file));
-    let mut file = std::fs::File::create(&tmp_path)
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("create tmp: {}", e)))?;
+    Err(TextifierError::DownloadFailed(format!(
+        "all mirrors failed, last error: {}", last_err
+    )))
+}
+
+/// Download from a single URL, verify size, rename atomically.
+/// Returns the model path on success.
+#[cfg(feature = "whisper")]
+fn try_download(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    tmp_path: &std::path::Path,
+    model_path: &std::path::Path,
+) -> Result<String, String> {
+    let mut resp = client
+        .get(url)
+        .send()
+        .map_err(|e| format!("download: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
 
     let total = resp.content_length();
-    resp.copy_to(&mut file)
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("download: {}", e)))?;
-
-    std::fs::rename(&tmp_path, &model_path)
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("rename: {}", e)))?;
-
-    let size = model_path.metadata().map(|m| m.len()).unwrap_or(0);
-    let size_mb = size as f64 / 1_048_576.0;
-    let total_mb = total.map(|t| t as f64 / 1_048_576.0).unwrap_or(size_mb);
     if let Some(t) = total {
-        if size != t {
-            let _ = std::fs::remove_file(&model_path);
-            return Err(TextifierError::TranscriptionFailed(
-                format!("model download incomplete: {:.0}/{:.0} MB", size_mb, total_mb)
+        let total_mb = t as f64 / 1_048_576.0;
+        println!("  ↓ 模型大小: {:.0} MB, 下载中...", total_mb);
+    }
+
+    let mut file =
+        std::fs::File::create(tmp_path).map_err(|e| format!("create tmp: {}", e))?;
+
+    resp.copy_to(&mut file)
+        .map_err(|e| format!("download: {}", e))?;
+
+    // Verify download size before renaming
+    let actual_size = tmp_path.metadata().map(|m| m.len()).unwrap_or(0);
+    if let Some(expected) = total {
+        if actual_size != expected {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(format!(
+                "incomplete: {:.0}/{:.0} MB",
+                actual_size as f64 / 1_048_576.0,
+                expected as f64 / 1_048_576.0
             ));
         }
     }
+
+    std::fs::rename(&tmp_path, model_path)
+        .map_err(|e| format!("rename: {}", e))?;
+
+    let size_mb = actual_size as f64 / 1_048_576.0;
     println!("  ✓ 模型下载完成 ({:.0} MB)", size_mb);
     Ok(model_path.to_string_lossy().to_string())
 }
@@ -406,7 +454,7 @@ async fn transcribe_video(url: &str, whisper_model: &str) -> Result<String, Text
         let v = video.clone();
         let d = dir.clone();
         tokio::task::spawn_blocking(move || extract_audio(&v, &d)).await
-            .map_err(|e| TextifierError::DownloadFailed(format!("task: {}", e)))?
+            .map_err(|e| TextifierError::TranscriptionFailed(format!("task: {}", e)))?
             .map_err(|e| { println!("  ✗ 音频提取失败: {}", e); e })?
     };
     let audio = match audio { Some(a) => a, None => return Ok(String::new()) };

@@ -1,6 +1,5 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use std::process::Command as StdCmd;
 
 #[derive(Parser)]
 #[command(name = "xhs-recipe", about = "从社交媒体链接提取菜谱的 CLI 工具")]
@@ -120,37 +119,24 @@ fn run_setup() {
 fn run_login(headless: bool, timeout: u32) {
     println!("📱 小红书登录");
 
-    let script = find_script("login.py");
-    let mut cmd = StdCmd::new("python3");
-    cmd.arg(&script);
-    if headless {
-        cmd.arg("--headless");
-    }
-    cmd.arg("--timeout");
-    cmd.arg(timeout.to_string());
-
-    let status = cmd.status().unwrap_or_else(|e| {
-        eprintln!("启动登录失败: {}", e);
-        std::process::exit(1);
-    });
-
-    if status.success() {
-        println!("\n现在可以运行 xhs-recipe extract 来提取菜谱了！");
-    } else {
-        std::process::exit(1);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    match rt.block_on(sources::xiaohongshu::auth::login(headless, timeout)) {
+        Ok(true) => {
+            println!("\n现在可以运行 xhs-recipe extract 来提取菜谱了！");
+        }
+        Ok(false) => {
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("登录失败: {}", e);
+            std::process::exit(1);
+        }
     }
 }
 
 fn run_logout() {
-    let script = find_script("logout.py");
-    let status = StdCmd::new("python3")
-        .arg(&script)
-        .status()
-        .unwrap_or_else(|e| {
-            eprintln!("退出登录失败: {}", e);
-            std::process::exit(1);
-        });
-    std::process::exit(if status.success() { 0 } else { 1 });
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(sources::xiaohongshu::auth::logout());
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -248,26 +234,3 @@ mod tests {
     }
 }
 
-fn find_script(name: &str) -> String {
-    let candidates: Vec<String> = std::iter::once(format!("scripts/{}", name))
-        .chain(std::iter::once(format!("../scripts/{}", name)))
-        .chain(std::env::current_exe().ok().and_then(|exe| {
-            let mut probe = exe.clone();
-            probe.pop();
-            for _ in 0..4 {
-                let candidate = probe.join("scripts").join(name);
-                if candidate.exists() {
-                    return Some(candidate.to_string_lossy().to_string());
-                }
-                probe.pop();
-            }
-            None
-        }))
-        .collect();
-    for c in &candidates {
-        if std::path::Path::new(c).exists() {
-            return c.clone();
-        }
-    }
-    format!("scripts/{}", name)
-}
