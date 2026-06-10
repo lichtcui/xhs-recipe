@@ -2,13 +2,23 @@ from pydantic import BaseModel
 from typing import Optional
 
 
-class XHSContent(BaseModel):
-    """从小红书页面提取的原始内容。"""
+class RawContent(BaseModel):
+    """平台无关的原始内容，由各个 Source Adapter 返回。"""
     title: str
-    description: str
-    images: list[str] = []
+    text_content: str          # 正文 / 描述文字
+    image_urls: list[str] = []
+    has_video: bool = False
     video_url: Optional[str] = None
-    note_type: str = "image"  # "image" or "video"
+    source: str                # "xiaohongshu"
+    source_url: str
+
+
+class TextContent(BaseModel):
+    """所有媒体统一转为文字后的结果。"""
+    full_text: str             # 标题 + 描述 + 视频转写 + 图片描述
+    title: str
+    source: str
+    source_url: str
 
 
 class Ingredient(BaseModel):
@@ -19,18 +29,18 @@ class Ingredient(BaseModel):
 
 
 class Step(BaseModel):
-    title: str  # e.g. "清洗", "腌制", "烤制"
-    time: Optional[str] = None  # e.g. "约3分钟", "1小时"
-    content: str  # detailed instructions
+    title: str
+    time: Optional[str] = None
+    content: str
 
 
 class Recipe(BaseModel):
     """最终输出的结构化菜谱。"""
     name: str
-    total_time: Optional[str] = None  # e.g. "1小时25分钟"
-    ingredients: list[Ingredient] = []  # 食材
-    seasonings: list[Ingredient] = []  # 调料
-    equipment: list[str] = []  # 器具
+    total_time: Optional[str] = None
+    ingredients: list[Ingredient] = []
+    seasonings: list[Ingredient] = []
+    equipment: list[str] = []
     steps: list[Step] = []
     tips: list[str] = []
     source_url: str

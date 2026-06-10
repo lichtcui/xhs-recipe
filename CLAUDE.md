@@ -34,19 +34,30 @@ Prerequisites: `ffmpeg` (brew install ffmpeg), `yt-dlp` (brew install yt-dlp).
 
 ## Architecture
 
+数据流单向分层：**Source Adapter → Textifier → Analyzer**
+
 ```
-src/
-├── xhs_recipe/
+xhs_recipe/
+├── __init__.py
+├── __main__.py           # python -m xhs_recipe entry
+├── cli.py                # 薄 CLI 层：仅命令定义，委托给 pipeline
+├── pipeline.py           # 流程编排：fetch → textify → analyze
+├── models.py             # 数据模型：RawContent, TextContent, Recipe, ...
+├── presentation.py       # 终端渲染 + 文件保存
+├── textifier.py          # 媒体转文字（视频转写 + 图片 caption）
+│
+├── sources/              # 来源适配器（按平台拆分）
 │   ├── __init__.py
-│   ├── __main__.py           # python -m xhs_recipe entry
-│   ├── cli.py                # typer CLI: extract, login, logout, setup commands
-│   ├── models.py             # pydantic data models: XHSContent, Recipe, Ingredient, Step
-│   ├── login.py              # Playwright QR code login, cookie save/load
-│   ├── xhs_fetcher.py        # Playwright-based XHS page scraper (DOM + __NEXT_DATA__)
-│   ├── transcriber.py        # yt-dlp → ffmpeg → faster-whisper pipeline for video notes
-│   └── recipe_extractor.py   # LLM API function-calling extraction via httpx
-├── pyproject.toml
-└── .env                      # API keys
+│   ├── base.py           # 路由 + URL 检测
+│   └── xiaohongshu/      # 小红书
+│       ├── __init__.py   # fetch() 入口
+│       ├── url.py        # 短链解析、笔记 ID 提取
+│       ├── auth.py       # 扫码登录 + Cookie 管理
+│       └── scraper.py    # Playwright 页面抓取
+│
+└── analyzers/            # AI 分析器（按能力拆分）
+    ├── __init__.py
+    └── recipe.py         # LLM function calling -> 菜谱
 ```
 
 ## Python Dependencies
@@ -65,16 +76,18 @@ src/
 
 ## Data Flow
 
-1. **`xhs-recipe extract <url>`** → `xhs_fetcher.fetch()` opens headless Chromium, resolves short links, extracts title/description/images/video-type from `__NEXT_DATA__` or DOM selectors
-2. Auto-cookie retry: if blocked by login page, saves session cookies and retries automatically
-3. If video note → `transcriber.process_video()`: yt-dlp downloads video, ffmpeg extracts 16kHz mono WAV, faster-whisper transcribes to Chinese text
-4. `recipe_extractor.extract_recipe()` sends text + images to LLM with function calling → parses response into `Recipe` model
-5. Output rendered via rich (terminal) or saved as `.md` / `.json`
+1. **`pipeline.extract()`** 接收 URL，调用 `sources.fetch(url)` 路由到对应适配器
+2. **Source Adapter**（如 `sources/xiaohongshu/`）：Playwright 抓取页面，返回平台无关的 `RawContent`
+3. **`textifier.process()`**：视频 → yt-dlp + ffmpeg + faster-whisper 转写，返回 `TextContent`
+4. **`analyzers.recipe.extract_recipe()`**：纯文本 + 可选图片 → LLM function calling → `Recipe` 模型
+5. **`presentation`**：终端 rich 渲染 / 保存 `.md` 或 `.json`
 
 ## Key Design Decisions
 
-- **Cookie auth**: `login.py` persists cookies to `~/.cache/xhs-recipe/cookies.json`. Auto-cookie retry in `fetch()` captures session cookies on first blocked request so login is usually automatic.
-- **Video download**: Uses yt-dlp subprocess for reliable XHS video extraction.
-- **Image selection**: Only sends up to 3 images to LLM API (controlled by `--images`/`--no-images`) to manage cost.
-- **Fallback chain for scraping**: `__NEXT_DATA__` (SSR data) → DOM selectors → API response interception.
-- **CLI uses typer** with rich for terminal output.
+- **数据流单向**：sources/ 不依赖 analyzers/，analyzers/ 不关心内容来源
+- **RawContent（平台无关）**：各 Source Adapter 统一输出 `RawContent`，新增来源只需新写 adapter
+- **Cookie auth**：属于各源自身认证，`sources/xiaohongshu/auth.py` 管理小红书 Cookie
+- **Video download**：yt-dlp 子进程，在 textifier.py 中完成下载 → 提音频 → 转写
+- **Image selection**：仅发送最多 3 张图片给 LLM（`--images`/`--no-images` 控制）
+- **Fallback chain for scraping**：`__NEXT_DATA__` → DOM selectors → API response interception
+- **CLI uses typer** with rich for terminal output
