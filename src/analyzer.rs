@@ -14,8 +14,7 @@ pub async fn extract_recipe(
         None => resolve_api_key()?,
     };
 
-    let base_url = std::env::var("DEEPSEEK_BASE_URL")
-        .unwrap_or_else(|_| "https://api.deepseek.com".to_string());
+    let base_url = "https://api.deepseek.com";
 
     let msg_content = build_message_content(text, image_urls).await;
 
@@ -127,11 +126,6 @@ pub async fn extract_recipe(
 
 fn resolve_api_key() -> Result<String, AnalyzerError> {
     if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
-        if !key.is_empty() {
-            return Ok(key);
-        }
-    }
-    if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
         if !key.is_empty() {
             return Ok(key);
         }
