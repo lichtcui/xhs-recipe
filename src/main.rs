@@ -17,8 +17,8 @@ enum Command {
         output: Option<PathBuf>,
         #[arg(short, long, default_value = "deepseek-chat")]
         model: String,
-        #[arg(long, default_value = "medium")]
-        whisper_model: String,
+        #[arg(long, default_value = "qwen3-asr-0.6b")]
+        asr_model: String,
         #[arg(long = "images", default_value_t = true)]
         images: bool,
     },
@@ -40,8 +40,8 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Extract { url, output, model, whisper_model, images } => {
-            run_extract(&url, output.as_deref(), &model, &whisper_model, images);
+        Command::Extract { url, output, model, asr_model, images } => {
+            run_extract(&url, output.as_deref(), &model, &asr_model, images);
         }
         Command::Setup => run_setup(),
         Command::Login { headless, timeout } => run_login(headless, timeout),
@@ -49,13 +49,13 @@ fn main() {
     }
 }
 
-fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, whisper_model: &str, images: bool) {
+fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_model: &str, images: bool) {
     println!("\n🔍 正在处理: {}", url);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let opts = xhs_recipe::pipeline::ExtractOptions {
         url,
-        whisper_model,
+        asr_model,
         llm_model: model,
         send_images: images,
         api_key: None,
@@ -105,6 +105,28 @@ fn run_setup() {
         println!("  ✗ yt-dlp 未安装（pip install yt-dlp）");
     }
 
+    if which("qwen-asr").is_some() {
+        println!("  ✓ qwen-asr 已安装");
+
+        let model_dir = home_dir().join(".cache").join("qwen-asr").join("qwen3-asr-0.6b");
+        if model_dir.exists() {
+            println!("  ✓ Qwen3-ASR 模型 (0.6B) 已下载");
+        } else {
+            println!("  ↓ Qwen3-ASR 模型 (0.6B) 未下载");
+            println!("    从 HuggingFace 下载:");
+            println!("      qwen-asr download qwen3-asr-0.6b");
+            println!("    从国内源（ModelScope）下载（推荐）:");
+            println!("      brew install git-lfs && git lfs install");
+            println!("      git clone https://www.modelscope.cn/Qwen/Qwen3-ASR-0.6B.git \\");
+            println!("        ~/.cache/qwen-asr/qwen3-asr-0.6b");
+            println!("      rm -rf ~/.cache/qwen-asr/qwen3-asr-0.6b/.git");
+        }
+    } else {
+        println!("  ✗ qwen-asr 未安装");
+        println!("    运行: cargo install qwen-asr-cli");
+        println!("    然后: qwen-asr download qwen3-asr-0.6b");
+    }
+
     println!();
     println!("📦 安装 Playwright 浏览器...");
     println!("  运行: playwright install chromium");
@@ -141,6 +163,10 @@ fn run_logout() {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
+fn home_dir() -> std::path::PathBuf {
+    std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| "/tmp".into())
+}
+
 fn which(name: &str) -> Option<String> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     for dir in std::env::split_paths(&path) {
@@ -166,11 +192,11 @@ mod tests {
     fn test_cli_extract_url() {
         let cli = Cli::try_parse_from(["xhs-recipe", "extract", "http://xhslink.com/test"]).unwrap();
         match cli.command {
-            Command::Extract { url, model, output, whisper_model, images } => {
+            Command::Extract { url, model, output, asr_model, images } => {
                 assert_eq!(url, "http://xhslink.com/test");
                 assert_eq!(model, "deepseek-chat");
                 assert!(images);
-                assert_eq!(whisper_model, "medium");
+                assert_eq!(asr_model, "qwen3-asr-0.6b");
                 assert!(output.is_none());
             }
             _ => panic!("expected Extract"),
@@ -184,14 +210,14 @@ mod tests {
             "http://xhslink.com/test",
             "--output", "recipe.md",
             "--model", "claude-3-5-sonnet-20241022",
-            "--whisper-model", "large-v3",
+            "--asr-model", "qwen3-asr-1.7b",
         ]).unwrap();
         match cli.command {
-            Command::Extract { url, output, model, whisper_model, .. } => {
+            Command::Extract { url, output, model, asr_model, .. } => {
                 assert_eq!(url, "http://xhslink.com/test");
                 assert_eq!(output.unwrap().to_str().unwrap(), "recipe.md");
                 assert_eq!(model, "claude-3-5-sonnet-20241022");
-                assert_eq!(whisper_model, "large-v3");
+                assert_eq!(asr_model, "qwen3-asr-1.7b");
             }
             _ => panic!("expected Extract"),
         }

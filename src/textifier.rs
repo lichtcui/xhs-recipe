@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Convert RawContent (with optional video) to TextContent.
-pub async fn process(raw: &RawContent, whisper_model: &str) -> Result<TextContent, TextifierError> {
+pub async fn process(raw: &RawContent, asr_model: &str) -> Result<TextContent, TextifierError> {
     let mut text_parts = vec![format!("标题：{}", raw.title)];
     if !raw.text_content.is_empty() {
         text_parts.push(format!("描述：{}", raw.text_content));
@@ -11,7 +11,7 @@ pub async fn process(raw: &RawContent, whisper_model: &str) -> Result<TextConten
 
     if raw.has_video {
         println!("  ↓ 下载视频...");
-        let transcript = transcribe_video(&raw.source_url, whisper_model).await?;
+        let transcript = transcribe_video(&raw.source_url, asr_model).await?;
         if !transcript.is_empty() {
             text_parts.push(format!("视频口述内容：\n{}", transcript));
         }
@@ -31,6 +31,7 @@ pub async fn process(raw: &RawContent, whisper_model: &str) -> Result<TextConten
 pub enum TextifierError {
     YtDlpNotFound,
     FfmpegNotFound,
+    QwenAsrNotFound,
     DownloadFailed(String),
     TranscriptionFailed(String),
 }
@@ -39,7 +40,8 @@ impl std::fmt::Display for TextifierError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::YtDlpNotFound => write!(f, "yt-dlp not found"),
-            Self::FfmpegNotFound => write!(f, "ffmpeg not found"),
+        Self::FfmpegNotFound => write!(f, "ffmpeg not found"),
+            Self::QwenAsrNotFound => write!(f, "qwen-asr not found (run: cargo install qwen-asr-cli)"),
             Self::DownloadFailed(msg) => write!(f, "download failed: {}", msg),
             Self::TranscriptionFailed(msg) => write!(f, "transcription failed: {}", msg),
         }
@@ -155,214 +157,79 @@ fn extract_audio(video_path: &Path, output_dir: &Path) -> Result<Option<PathBuf>
     }
 }
 
-// ── Transcription (whisper-rs native) ──────────────────────────────
+// ── Transcription (Qwen3-ASR subprocess) ──────────────────────────
 
-fn transcribe_audio(audio_path: &Path, model_size: &str) -> Result<Option<String>, TextifierError> {
-    transcribe_whisper_rs(audio_path, model_size)
-}
+fn transcribe_audio(audio_path: &Path, model_name: &str) -> Result<Option<String>, TextifierError> {
+    let qwen_asr = find_qwen_asr()?;
+    let model_dir = resolve_model_dir(model_name)?;
 
-// ── whisper-rs (native) ───────────────────────────────────────────
+    println!("  ↓ 转写音频中 (Qwen3-ASR, {})...", model_name);
 
-fn transcribe_whisper_rs(audio_path: &Path, model_size: &str) -> Result<Option<String>, TextifierError> {
-    let model_path = find_or_download_model(model_size)?;
+    let output = Command::new(&qwen_asr)
+        .args([
+            "-d", &model_dir,
+            "-i", &audio_path.to_string_lossy(),
+            "--language", "Chinese",
+            "--silent",
+        ])
+        .output()
+        .map_err(|e| TextifierError::TranscriptionFailed(format!("qwen-asr exec: {}", e)))?;
 
-    // Read WAV file into f32 samples (whisper.cpp expects f32)
-    let samples_i16 = read_wav_i16(audio_path)?;
-    let samples: Vec<f32> = samples_i16.iter().map(|&s| s as f32 / 32768.0).collect();
-
-    println!("  ↓ 加载 Whisper 模型 ({}, cpu)...", model_size);
-
-    whisper_rs::install_logging_hooks();
-
-    let ctx = whisper_rs::WhisperContext::new_with_params(
-        &model_path,
-        whisper_rs::WhisperContextParameters::default(),
-    )
-    .map_err(|e| TextifierError::TranscriptionFailed(format!("whisper load: {}", e)))?;
-
-    let mut state = ctx.create_state()
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("whisper state: {}", e)))?;
-
-    let mut params = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
-    params.set_language(Some("zh"));
-    params.set_print_special(false);
-    params.set_print_progress(false);
-    params.set_print_realtime(false);
-    params.set_print_timestamps(false);
-
-    println!("  ↓ 转写音频中...");
-    state.full(params, &samples[..])
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("whisper full: {}", e)))?;
-
-    let num_segments = state.full_n_segments();
-    let mut text_parts = Vec::new();
-    for i in 0..num_segments {
-        if let Some(segment) = state.get_segment(i) {
-            text_parts.push(segment.to_string());
-        }
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(TextifierError::TranscriptionFailed(stderr.trim().to_string()));
     }
 
-    let full_text = text_parts.join(" ");
-    if full_text.is_empty() {
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if text.is_empty() {
         println!("  ⚠ 转写结果为空");
         Ok(None)
     } else {
-        println!("  ✓ 转写完成 (约{}字)", full_text.chars().count());
-        Ok(Some(full_text))
+        println!("  ✓ 转写完成 (约{}字)", text.chars().count());
+        Ok(Some(text))
     }
 }
 
-fn find_or_download_model(size: &str) -> Result<String, TextifierError> {
-    let cache_dir = dirs_next().join(".cache").join("whisper-rs");
-    std::fs::create_dir_all(&cache_dir).ok();
+// ── Qwen3-ASR helpers ─────────────────────────────────────────────
 
-    let model_file = format!("ggml-{}.bin", size);
-    let model_path = cache_dir.join(&model_file);
-
-    if model_path.exists() {
-        return Ok(model_path.to_string_lossy().to_string());
+fn find_qwen_asr() -> Result<String, TextifierError> {
+    if let Ok(path) = which("qwen-asr") {
+        return Ok(path);
     }
+    Err(TextifierError::QwenAsrNotFound)
+}
 
-    // Clean up stale partial download from previous interrupted run
-    let tmp_path = cache_dir.join(format!("{}.tmp", model_file));
-    if tmp_path.exists() {
-        println!("  ↓ 清除上次未完成的下载缓存...");
-        let _ = std::fs::remove_file(&tmp_path);
-    }
-
-    // Try multiple mirrors in case HuggingFace is slow/unreachable
-    let urls: [&str; 3] = [
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main",
-        "https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main",
-        "https://cdn-lfs-us-1.hf.co/repos/ggerganov/whisper.cpp/resolve/main",
-    ];
-
-    println!("  ↓ 下载 Whisper 模型 ({}, 约 1-3 GB，请耐心等待)...", size);
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(None) // no timeout for large files
-        .build()
-        .map_err(|e| TextifierError::DownloadFailed(format!("client: {}", e)))?;
-
-    let mut last_err = String::new();
-    for (i, base) in urls.iter().enumerate() {
-        if i > 0 {
-            println!("  ↓ 尝试镜像 {} ...", base);
-            // Clean up partial from previous attempt
-            let _ = std::fs::remove_file(&tmp_path);
+fn resolve_model_dir(model_name: &str) -> Result<String, TextifierError> {
+    // If it's a path, use it directly
+    if model_name.contains('/') || model_name.contains('\\') {
+        if std::path::Path::new(model_name).exists() {
+            return Ok(model_name.to_string());
         }
-
-        let url = format!("{}/{}", base, model_file);
-        match try_download(&client, &url, &tmp_path, &model_path) {
-            Ok(path) => return Ok(path),
-            Err(e) => {
-                last_err = e;
-                continue;
-            }
-        }
-    }
-
-    Err(TextifierError::DownloadFailed(format!(
-        "all mirrors failed, last error: {}", last_err
-    )))
-}
-
-/// Download from a single URL, verify size, rename atomically.
-fn try_download(
-    client: &reqwest::blocking::Client,
-    url: &str,
-    tmp_path: &std::path::Path,
-    model_path: &std::path::Path,
-) -> Result<String, String> {
-    let mut resp = client
-        .get(url)
-        .send()
-        .map_err(|e| format!("download: {}", e))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-
-    let total = resp.content_length();
-    if let Some(t) = total {
-        let total_mb = t as f64 / 1_048_576.0;
-        println!("  ↓ 模型大小: {:.0} MB, 下载中...", total_mb);
-    }
-
-    let mut file =
-        std::fs::File::create(tmp_path).map_err(|e| format!("create tmp: {}", e))?;
-
-    resp.copy_to(&mut file)
-        .map_err(|e| format!("download: {}", e))?;
-
-    // Verify download size before renaming
-    let actual_size = tmp_path.metadata().map(|m| m.len()).unwrap_or(0);
-    if let Some(expected) = total {
-        if actual_size != expected {
-            let _ = std::fs::remove_file(&tmp_path);
-            return Err(format!(
-                "incomplete: {:.0}/{:.0} MB",
-                actual_size as f64 / 1_048_576.0,
-                expected as f64 / 1_048_576.0
-            ));
-        }
-    }
-
-    std::fs::rename(&tmp_path, model_path)
-        .map_err(|e| format!("rename: {}", e))?;
-
-    let size_mb = actual_size as f64 / 1_048_576.0;
-    println!("  ✓ 模型下载完成 ({:.0} MB)", size_mb);
-    Ok(model_path.to_string_lossy().to_string())
-}
-
-fn dirs_next() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    PathBuf::from(home)
-}
-
-fn read_wav_i16(path: &Path) -> Result<Vec<i16>, TextifierError> {
-    let file = std::fs::File::open(path)
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("open wav: {}", e)))?;
-
-    let mut reader = std::io::BufReader::new(file);
-
-    // Read WAV header
-    let mut header = [0u8; 44];
-    std::io::Read::read_exact(&mut reader, &mut header)
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("read wav header: {}", e)))?;
-
-    // Verify RIFF/WAVE
-    if &header[0..4] != b"RIFF" || &header[8..12] != b"WAVE" {
-        return Err(TextifierError::TranscriptionFailed("invalid WAV file".into()));
-    }
-
-    // Verify PCM 16-bit mono
-    let channels = u16::from_le_bytes([header[22], header[23]]);
-    let bits_per_sample = u16::from_le_bytes([header[34], header[35]]);
-    if channels != 1 || bits_per_sample != 16 {
         return Err(TextifierError::TranscriptionFailed(
-            format!("expected 16-bit mono, got {}ch {}bit", channels, bits_per_sample)
+            format!("模型目录不存在: {}", model_name),
         ));
     }
 
-    // Read PCM data
-    let mut pcm = Vec::new();
-    std::io::Read::read_to_end(&mut reader, &mut pcm)
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("read pcm: {}", e)))?;
+    // Look in default cache directory (~/.cache/qwen-asr/<model_name>)
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let cache_dir = std::path::PathBuf::from(home)
+        .join(".cache")
+        .join("qwen-asr")
+        .join(model_name);
 
-    // Convert u8 bytes to i16 samples (little-endian)
-    let samples: Vec<i16> = pcm
-        .chunks_exact(2)
-        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect();
-
-    Ok(samples)
+    if cache_dir.exists() {
+        Ok(cache_dir.to_string_lossy().to_string())
+    } else {
+        Err(TextifierError::TranscriptionFailed(
+            format!("Qwen3-ASR 模型 '{}' 未下载，请先运行: qwen-asr download {}", model_name, model_name),
+        ))
+    }
 }
+
 
 // ── Orchestration ─────────────────────────────────────────────────
 
-async fn transcribe_video(url: &str, whisper_model: &str) -> Result<String, TextifierError> {
+async fn transcribe_video(url: &str, asr_model: &str) -> Result<String, TextifierError> {
     let url = url.to_string();
     let output_dir = tempfile::tempdir()
         .map_err(|e| TextifierError::DownloadFailed(format!("tempdir: {}", e)))?;
@@ -386,7 +253,7 @@ async fn transcribe_video(url: &str, whisper_model: &str) -> Result<String, Text
     };
     let audio = match audio { Some(a) => a, None => return Ok(String::new()) };
 
-    let model = whisper_model.to_string();
+    let model = asr_model.to_string();
     let transcript = tokio::task::spawn_blocking(move || transcribe_audio(&audio, &model)).await
         .map_err(|e| TextifierError::TranscriptionFailed(format!("task: {}", e)))?
         .map_err(|e| { println!("  ✗ 转写失败: {}", e); e })?;
@@ -407,17 +274,8 @@ mod tests {
             image_urls: vec![], has_video: false, video_url: None,
             source: "test".into(), source_url: "https://example.com".into(),
         };
-        let result = rt.block_on(process(&raw, "medium")).unwrap();
+        let result = rt.block_on(process(&raw, "qwen3-asr-0.6b")).unwrap();
         assert!(result.full_text.contains("测试标题"));
         assert!(!result.full_text.contains("视频口述内容"));
-    }
-
-    #[test]
-    fn test_read_wav_invalid() {
-        let tmp = std::env::temp_dir().join("test_not_wav.bin");
-        std::fs::write(&tmp, b"not a wav file").ok();
-        let result = read_wav_i16(&tmp);
-        assert!(result.is_err());
-        let _ = std::fs::remove_file(&tmp);
     }
 }

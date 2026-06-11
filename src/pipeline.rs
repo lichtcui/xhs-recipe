@@ -2,7 +2,7 @@ use crate::models::Recipe;
 
 pub struct ExtractOptions<'a> {
     pub url: &'a str,
-    pub whisper_model: &'a str,
+    pub asr_model: &'a str,
     pub llm_model: &'a str,
     pub send_images: bool,
     pub api_key: Option<&'a str>,
@@ -20,7 +20,7 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
     println!("  ✓ 图片: {} 张", raw.image_urls.len());
 
     // Step 2: Textify
-    let text = crate::textifier::process(&raw, opts.whisper_model)
+    let text = crate::textifier::process(&raw, opts.asr_model)
         .await
         .map_err(|e| PipelineError::Textifier(e.to_string()))?;
 
@@ -71,7 +71,7 @@ mod tests {
     fn test_extract_options_build() {
         let opts = ExtractOptions {
             url: "https://example.com",
-            whisper_model: "medium",
+            asr_model: "qwen3-asr-0.6b",
             llm_model: "deepseek-chat",
             send_images: true,
             api_key: None,
@@ -85,7 +85,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let opts = ExtractOptions {
             url: "https://example.com",
-            whisper_model: "medium",
+            asr_model: "qwen3-asr-0.6b",
             llm_model: "deepseek-chat",
             send_images: true,
             api_key: None,

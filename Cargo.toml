@@ -12,7 +12,6 @@ regex = "1"
 reqwest = { version = "0.12", features = ["json", "cookies", "blocking"] }
 zendriver = "0.2"
 tempfile = "3"
-whisper-rs = "0.16"
 base64 = "0.22"
 colored = "2"
 clap = { version = "4", features = ["derive"] }

@@ -12,10 +12,21 @@ CLI tool to extract structured Chinese recipes from 小红书 (Xiaohongshu / Red
 # Build
 cargo build
 
-# Run
+# Run with Qwen3-ASR transcription
 cargo run -- extract <xhs-url>
 cargo run -- extract <xhs-url> --output recipe.md
 cargo run -- extract <xhs-url> --no-images
+cargo run -- extract <xhs-url> --asr-model qwen3-asr-1.7b  # higher accuracy model
+
+# Install Qwen3-ASR (required for transcription)
+cargo install qwen-asr-cli
+qwen-asr download qwen3-asr-0.6b
+
+# 国内源（ModelScope）下载方式:
+#   brew install git-lfs && git lfs install
+#   git clone https://www.modelscope.cn/Qwen/Qwen3-ASR-0.6B.git \
+#     ~/.cache/qwen-asr/qwen3-asr-0.6b
+#   rm -rf ~/.cache/qwen-asr/qwen3-asr-0.6b/.git
 
 # Manual login (if auto-cookie fails)
 cargo run -- login [--headless]
@@ -38,7 +49,7 @@ cargo run -- extract <url>
   → src/main.rs                # Clap CLI
   → src/pipeline.rs            # fetch → textify → analyze
     → src/sources/base.rs      # zendriver-rs browser automation (Rust-native)
-    → src/textifier.rs         # yt-dlp + ffmpeg + whisper-rs transcription
+    → src/textifier.rs         # yt-dlp + ffmpeg + Qwen3-ASR transcription
     → src/analyzer.rs          # reqwest → DeepSeek API (function calling)
   → src/presentation/          # Terminal render + .md/.json save
 ```
@@ -47,7 +58,7 @@ cargo run -- extract <url>
 
 1. **`pipeline.extract()`** 接收 URL，调用 `sources.fetch(url)` 路由到对应适配器
 2. **Source Adapter**（如 `sources/xiaohongshu/`）：zendriver-rs 抓取页面，返回平台无关的 `RawContent`
-3. **`textifier.process()`**：视频 → yt-dlp + ffmpeg + whisper-rs 转写，返回 `TextContent`
+3. **`textifier.process()`**：视频 → yt-dlp + ffmpeg + Qwen3-ASR 转写，返回 `TextContent`
 4. **`analyzers.recipe.extract_recipe()`**：纯文本 + 可选图片 → LLM function calling → `Recipe` 模型
 5. **`presentation`**：终端 rich 渲染 / 保存 `.md` 或 `.json`
 
@@ -56,7 +67,7 @@ cargo run -- extract <url>
 - **数据流单向**：sources/ 不依赖 analyzers/，analyzers/ 不关心内容来源
 - **RawContent（平台无关）**：各 Source Adapter 统一输出 `RawContent`，新增来源只需新写 adapter
 - **Cookie auth**：zendriver-rs 管理浏览器 cookie
-- **Video download**：yt-dlp 子进程，在 textifier 中完成下载 → 提音频 → whisper-rs 转写
+- **Video download**：yt-dlp 子进程，在 textifier 中完成下载 → 提音频 → Qwen3-ASR 转写
 - **Image selection**：仅发送最多 3 张图片给 LLM（`--images`/`--no-images` 控制）
 - **Fallback chain for scraping**：`__NEXT_DATA__` → DOM selectors → API response interception
 - **CLI uses clap** for argument parsing
@@ -83,7 +94,7 @@ src/
 ├── main.rs               # Binary (CLI, clap)
 ├── models.rs             # Data models (serde)
 ├── pipeline.rs           # Orchestration: fetch → textify → analyze
-├── textifier.rs          # yt-dlp + ffmpeg + whisper-rs
+├── textifier.rs          # yt-dlp + ffmpeg + Qwen3-ASR
 ├── analyzer.rs           # LLM function calling (reqwest → DeepSeek)
 ├── sources/
 │   ├── mod.rs            # Source routing
