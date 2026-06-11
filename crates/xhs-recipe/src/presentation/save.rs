@@ -1,5 +1,5 @@
 use std::path::Path;
-use models::Recipe;
+use crate::models::Recipe;
 
 /// Save recipe to file (.md or .json based on extension).
 pub fn save_to_file(recipe: &Recipe, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -90,7 +90,7 @@ fn save_md(recipe: &Recipe, path: &Path) -> Result<(), Box<dyn std::error::Error
 #[cfg(test)]
 mod tests {
     use super::*;
-    use models::Recipe;
+    use crate::models::Recipe;
     use std::path::PathBuf;
 
     fn golden_dir() -> PathBuf {

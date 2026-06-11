@@ -1,4 +1,4 @@
-use models::{RawContent, TextContent};
+use crate::models::{RawContent, TextContent};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -171,6 +171,9 @@ fn transcribe_whisper_rs(audio_path: &Path, model_size: &str) -> Result<Option<S
     let samples: Vec<f32> = samples_i16.iter().map(|&s| s as f32 / 32768.0).collect();
 
     println!("  ↓ 加载 Whisper 模型 ({}, cpu)...", model_size);
+
+    whisper_rs::install_logging_hooks();
+
     let ctx = whisper_rs::WhisperContext::new_with_params(
         &model_path,
         whisper_rs::WhisperContextParameters::default(),
@@ -265,7 +268,6 @@ fn find_or_download_model(size: &str) -> Result<String, TextifierError> {
 }
 
 /// Download from a single URL, verify size, rename atomically.
-/// Returns the model path on success.
 fn try_download(
     client: &reqwest::blocking::Client,
     url: &str,
@@ -395,7 +397,7 @@ async fn transcribe_video(url: &str, whisper_model: &str) -> Result<String, Text
 #[cfg(test)]
 mod tests {
     use super::*;
-    use models::RawContent;
+    use crate::models::RawContent;
 
     #[test]
     fn test_process_no_video() {

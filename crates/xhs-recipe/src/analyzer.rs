@@ -1,4 +1,4 @@
-use models::{Ingredient, Recipe, Step};
+use crate::models::{Ingredient, Recipe, Step};
 use serde_json::{json, Value};
 
 /// Extract a structured recipe from text + optional images using LLM function calling.
@@ -678,20 +678,19 @@ mod tests {
 
     #[test]
     fn test_parse_recipe_step_as_string() {
-        // Python code handles: Step(title="", content=str(s))
         let data = json!({
             "name": "汤",
             "ingredients": [{"name": "水"}],
             "steps": [
                 {"title": "煮", "content": "烧开水"},
-                "直接放盐"  // Steps can be strings (!)
+                "直接放盐"
             ],
             "is_food": true
         });
         let recipe = parse_recipe_data(&data);
         assert_eq!(recipe.steps.len(), 2);
         assert_eq!(recipe.steps[0].title, "煮");
-        assert_eq!(recipe.steps[1].title, "");  // string steps get empty title
+        assert_eq!(recipe.steps[1].title, "");
         assert_eq!(recipe.steps[1].content, "直接放盐");
     }
 
@@ -702,7 +701,7 @@ mod tests {
         assert!(recipe.name.is_empty());
         assert!(recipe.ingredients.is_empty());
         assert!(recipe.steps.is_empty());
-        assert!(recipe.is_food);  // default
+        assert!(recipe.is_food);
     }
 
     #[test]
@@ -723,7 +722,7 @@ mod tests {
         assert!(recipe.tips.is_empty());
         assert!(recipe.equipment.is_empty());
         assert!(recipe.seasonings.is_empty());
-        assert!(recipe.is_food);  // null → default true
+        assert!(recipe.is_food);
     }
 
     #[test]

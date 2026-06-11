@@ -18,20 +18,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "analyzer"
-version = "0.1.0"
-dependencies = [
- "base64",
- "dotenvy",
- "models",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -293,11 +279,8 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "dotenvy",
- "models",
- "pipeline",
- "presentation",
- "sources",
  "tokio",
+ "xhs-recipe",
 ]
 
 [[package]]
@@ -1127,14 +1110,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "models"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1277,17 +1252,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
-name = "pipeline"
-version = "0.1.0"
-dependencies = [
- "analyzer",
- "models",
- "sources",
- "textifier",
- "tokio",
-]
-
-[[package]]
 name = "pkg-config"
 version = "0.3.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1315,15 +1279,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
  "zerocopy",
-]
-
-[[package]]
-name = "presentation"
-version = "0.1.0"
-dependencies = [
- "colored",
- "models",
- "serde_json",
 ]
 
 [[package]]
@@ -1727,19 +1682,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sources"
-version = "0.1.0"
-dependencies = [
- "models",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "zendriver",
-]
-
-[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1833,17 +1775,6 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "textifier"
-version = "0.1.0"
-dependencies = [
- "models",
- "reqwest",
- "tempfile",
- "tokio",
- "whisper-rs",
 ]
 
 [[package]]
@@ -2639,6 +2570,22 @@ name = "writeable"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
+
+[[package]]
+name = "xhs-recipe"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "colored",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "whisper-rs",
+ "zendriver",
+]
 
 [[package]]
 name = "yoke"

@@ -3,8 +3,8 @@
 /// Strategy:
 /// 1. zendriver-rs with stealth (primary — replaces Python bridge + playwright-rs)
 /// 2. reqwest direct HTTP (fallback — fast, no browser needed)
-use models::RawContent;
-use crate::SourceError;
+use crate::models::RawContent;
+use super::super::SourceError;
 use std::time::Duration;
 
 pub async fn scrape(url: &str, note_id: &str) -> Result<RawContent, SourceError> {

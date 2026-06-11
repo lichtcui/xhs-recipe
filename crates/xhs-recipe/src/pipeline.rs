@@ -1,4 +1,4 @@
-use models::Recipe;
+use crate::models::Recipe;
 
 pub struct ExtractOptions<'a> {
     pub url: &'a str,
@@ -12,7 +12,7 @@ pub struct ExtractOptions<'a> {
 pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> {
     // Step 1: Fetch
     println!("  ↓ 抓取页面内容...");
-    let raw = sources::fetch(opts.url)
+    let raw = crate::sources::fetch(opts.url)
         .await
         .map_err(|e| PipelineError::Source(e.to_string()))?;
     println!("  ✓ 标题: {}", raw.title);
@@ -20,7 +20,7 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
     println!("  ✓ 图片: {} 张", raw.image_urls.len());
 
     // Step 2: Textify
-    let text = textifier::process(&raw, opts.whisper_model)
+    let text = crate::textifier::process(&raw, opts.whisper_model)
         .await
         .map_err(|e| PipelineError::Textifier(e.to_string()))?;
 
@@ -30,7 +30,7 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
     } else {
         &[]
     };
-    let mut recipe = analyzer::extract_recipe(
+    let mut recipe = crate::analyzer::extract_recipe(
         &text.full_text,
         &text.title,
         image_urls,
@@ -82,7 +82,6 @@ mod tests {
 
     #[test]
     fn test_extract_unsupported_url() {
-        // Manually create tokio runtime since #[tokio::test] macro may not work here
         let rt = tokio::runtime::Runtime::new().unwrap();
         let opts = ExtractOptions {
             url: "https://example.com",

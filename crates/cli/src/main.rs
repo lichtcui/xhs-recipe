@@ -53,7 +53,7 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, whisper
     println!("\n🔍 正在处理: {}", url);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let opts = pipeline::ExtractOptions {
+    let opts = xhs_recipe::pipeline::ExtractOptions {
         url,
         whisper_model,
         llm_model: model,
@@ -61,11 +61,11 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, whisper
         api_key: None,
     };
 
-    match rt.block_on(pipeline::extract(opts)) {
+    match rt.block_on(xhs_recipe::pipeline::extract(opts)) {
         Ok(recipe) => {
-            presentation::render::render_terminal(&recipe);
+            xhs_recipe::presentation::render::render_terminal(&recipe);
             if let Some(path) = output {
-                if let Err(e) = presentation::save::save_to_file(&recipe, path) {
+                if let Err(e) = xhs_recipe::presentation::save::save_to_file(&recipe, path) {
                     eprintln!("保存失败: {}", e);
                 } else {
                     println!("\n✓ 已保存到 {}", path.display());
@@ -120,7 +120,7 @@ fn run_login(headless: bool, timeout: u32) {
     println!("📱 小红书登录");
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    match rt.block_on(sources::xiaohongshu::auth::login(headless, timeout)) {
+    match rt.block_on(xhs_recipe::sources::xiaohongshu::auth::login(headless, timeout)) {
         Ok(true) => {
             println!("\n现在可以运行 xhs-recipe extract 来提取菜谱了！");
         }
@@ -136,7 +136,7 @@ fn run_login(headless: bool, timeout: u32) {
 
 fn run_logout() {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(sources::xiaohongshu::auth::logout());
+    rt.block_on(xhs_recipe::sources::xiaohongshu::auth::logout());
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -233,4 +233,3 @@ mod tests {
         assert!(matches!(cli.command, Command::Logout));
     }
 }
-

@@ -12,7 +12,4 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 dotenvy = "0.15"
-models = { path = "../models" }
-presentation = { path = "../presentation" }
-pipeline = { path = "../pipeline" }
-sources = { path = "../sources" }
+xhs-recipe = { path = "../xhs-recipe" }

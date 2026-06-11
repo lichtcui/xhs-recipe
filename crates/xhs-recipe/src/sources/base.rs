@@ -1,5 +1,5 @@
-use models::RawContent;
-use crate::SourceError;
+use crate::models::RawContent;
+use super::SourceError;
 
 const SUPPORTED_DOMAINS: &[&str] = &["xiaohongshu.com", "xhslink.com"];
 
