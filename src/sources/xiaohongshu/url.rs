@@ -1,30 +1,33 @@
 /// Xiaohongshu URL handling: detection, short URL resolution, note ID extraction.
 use regex::Regex;
+use std::sync::OnceLock;
 
 /// Check if a URL is a Xiaohongshu URL.
 pub fn is_xhs_url(url: &str) -> bool {
-    let patterns = [
-        Regex::new(r"xiaohongshu\.com/explore/[a-f0-9]+").expect("static regex"),
-        Regex::new(r"xiaohongshu\.com/discovery/item/[a-f0-9]+").expect("static regex"),
-        Regex::new(r"xhslink\.com/\w+").expect("static regex"),
-    ];
+    static PATTERNS: OnceLock<[Regex; 3]> = OnceLock::new();
+    let patterns = PATTERNS.get_or_init(|| [
+        Regex::new(r"xiaohongshu\.com/explore/[a-f0-9]+").expect("regex: explore URL"),
+        Regex::new(r"xiaohongshu\.com/discovery/item/[a-f0-9]+").expect("regex: discovery URL"),
+        Regex::new(r"xhslink\.com/\w+").expect("regex: short URL"),
+    ]);
     patterns.iter().any(|p| p.is_match(url))
 }
 
 /// Extract note ID from a resolved Xiaohongshu URL.
 pub fn extract_note_id(url: &str) -> Option<String> {
     for pattern in &[
-        Regex::new(r"/explore/([a-f0-9]+)").expect("static regex"),
-        Regex::new(r"/discovery/item/([a-f0-9]+)").expect("static regex"),
+        Regex::new(r"/explore/([a-f0-9]+)").expect("regex: extract explore ID"),
+        Regex::new(r"/discovery/item/([a-f0-9]+)").expect("regex: extract discovery ID"),
     ] {
         if let Some(caps) = pattern.captures(url) {
             return Some(caps[1].to_string());
         }
     }
     // Also try from redirectPath (URL-encoded path) in login/error URLs
-    if let Some(caps) = Regex::new(r"redirectPath=.*?%2Fexplore%2F([a-f0-9]+)")
-        .ok()
-        .and_then(|r| r.captures(url))
+    static REDIRECT_RE: OnceLock<Regex> = OnceLock::new();
+    if let Some(caps) = REDIRECT_RE
+        .get_or_init(|| Regex::new(r"redirectPath=.*?%2Fexplore%2F([a-f0-9]+)").expect("regex: redirect path"))
+        .captures(url)
     {
         return Some(caps[1].to_string());
     }

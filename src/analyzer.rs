@@ -902,4 +902,121 @@ mod tests {
         )).unwrap();
         assert_eq!(recipe.name, "图片菜");
     }
+
+    // ── repair_json / close_unclosed tests ─────────────────────
+
+    #[test]
+    fn test_repair_json_trailing_comma() {
+        let raw = r#"{"name":"测试","ingredients":[{"name":"肉"},]}"#;
+        let result = repair_json(raw).unwrap();
+        assert_eq!(result["name"], "测试");
+        assert_eq!(result["ingredients"][0]["name"], "肉");
+    }
+
+    #[test]
+    fn test_repair_json_truncated_no_close_brace() {
+        let raw = r#"{"name":"测试","ingredients":[{"name":"肉"}"#;
+        let result = repair_json(raw).unwrap();
+        assert_eq!(result["name"], "测试");
+        assert_eq!(result["ingredients"][0]["name"], "肉");
+    }
+
+    #[test]
+    fn test_repair_json_truncated_no_close_bracket() {
+        let raw = r#"{"name":"测试","ingredients":[{"name":"肉"},{"name":"鱼"}"#;
+        let result = repair_json(raw).unwrap();
+        assert_eq!(result["ingredients"][1]["name"], "鱼");
+    }
+
+    #[test]
+    fn test_repair_json_truncated_missing_string_end() {
+        // String value's closing quote is missing at end of input
+        let raw = r#"{"name":"测试菜"#;
+        let result = repair_json(raw).unwrap();
+        assert_eq!(result["name"], "测试菜");
+    }
+
+    #[test]
+    fn test_repair_json_trailing_comma_then_truncated() {
+        let raw = r#"{"name":"测试","ingredients":[{"name":"肉"},],"#;
+        let result = repair_json(raw).unwrap();
+        assert_eq!(result["ingredients"][0]["name"], "肉");
+    }
+
+    #[test]
+    fn test_repair_json_valid_no_fix_needed() {
+        let raw = r#"{"name":"ok","ingredients":[],"steps":[],"is_food":true}"#;
+        assert!(repair_json(raw).is_ok());
+    }
+
+    #[test]
+    fn test_repair_json_nested_unclosed() {
+        let raw = r#"{"name":"a","steps":[{"title":"t","content":"c","time":"5"}"#;
+        let result = repair_json(raw).unwrap();
+        assert_eq!(result["steps"][0]["title"], "t");
+        assert_eq!(result["steps"][0]["content"], "c");
+    }
+
+    #[test]
+    fn test_close_unclosed_empty_string() {
+        assert_eq!(close_unclosed(""), "");
+    }
+
+    #[test]
+    fn test_close_unclosed_no_brackets() {
+        assert_eq!(close_unclosed(r#"{"key": "value"}"#), r#"{"key": "value"}"#);
+    }
+
+    #[test]
+    fn test_close_unclosed_trailing_comma_removed() {
+        // close_unclosed doesn't fix trailing commas (repair_json handles that via regex)
+        let result = close_unclosed(r#"{"key": "value",}"#);
+        assert_eq!(result, r#"{"key": "value",}"#);
+    }
+
+    #[test]
+    fn test_close_unclosed_missing_array_close() {
+        let result = close_unclosed(r#"{"key": [1, 2, 3"#);
+        // 3 is not in a string, so just close array then object
+        assert_eq!(result, r#"{"key": [1, 2, 3]}"#);
+    }
+
+    // ── parse_response error paths ──────────────────────────────
+
+    #[test]
+    fn test_parse_response_short_content_no_fallback() {
+        // Content is too short (< 50 chars) for fallback_parse
+        let response = json!({
+            "choices": [{
+                "message": {
+                    "content": "short text"
+                }
+            }]
+        });
+        let result = parse_response(response);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("no structured data"));
+    }
+
+    #[test]
+    fn test_parse_response_empty_choices() {
+        let response = json!({
+            "choices": []
+        });
+        let result = parse_response(response);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_response_missing_choices_key() {
+        let response = json!({"message": "unexpected"});
+        let result = parse_response(response);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_repair_json_garbage_input() {
+        let raw = "not json at all!@#$%";
+        assert!(repair_json(raw).is_err());
+    }
 }

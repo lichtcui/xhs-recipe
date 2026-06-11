@@ -60,14 +60,14 @@ fn find_yt_dlp() -> Result<String, TextifierError> {
 
 fn download_video(url: &str, output_dir: &Path) -> Result<Option<PathBuf>, TextifierError> {
     let yt_dlp = find_yt_dlp()?;
-    let template = output_dir.join("%(id)s.%(ext)s");
+    let template = output_dir.join("video.%(ext)s");
     let template_str = template.to_string_lossy().to_string();
 
     let result = Command::new(&yt_dlp)
         .args([
             "--quiet", "--no-warnings", "--no-playlist",
             "-f", "best[ext=mp4]/best",
-            "-o", &template_str, url,
+            "-o", &template_str, "--", url,
         ])
         .output()
         .map_err(|e| TextifierError::DownloadFailed(format!("yt-dlp exec error: {}", e)))?;
