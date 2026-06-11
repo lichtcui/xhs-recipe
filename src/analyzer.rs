@@ -2,8 +2,81 @@ use crate::models::{Ingredient, Recipe, Step};
 use serde_json::{json, Value};
 use std::sync::OnceLock;
 
+// ── HTTP Client Trait ────────────────────────────────────────────
+
+/// HTTP abstraction for the analyzer, enabling unit tests without network calls.
+#[allow(async_fn_in_trait)]
+pub trait HttpClient: Send + Sync {
+    /// POST JSON to a URL with Bearer auth, return parsed JSON response.
+    async fn post_json(&self, url: &str, api_key: &str, body: Value) -> Result<Value, AnalyzerError>;
+    /// GET bytes from a URL (for image download), with a max byte size.
+    async fn get_bytes(&self, url: &str, max_size: usize) -> Option<Vec<u8>>;
+}
+
+/// Production HTTP client wrapping reqwest.
+pub struct RealHttpClient {
+    inner: reqwest::Client,
+}
+
+impl RealHttpClient {
+    pub fn new() -> Self {
+        Self { inner: reqwest::Client::new() }
+    }
+}
+
+impl HttpClient for RealHttpClient {
+    async fn post_json(&self, url: &str, api_key: &str, body: Value) -> Result<Value, AnalyzerError> {
+        let response = self.inner
+            .post(url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AnalyzerError::ApiError(format!("request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AnalyzerError::ApiError(format!(
+                "HTTP {}: {}",
+                status,
+                &body[..body.len().min(200)]
+            )));
+        }
+
+        response.json().await.map_err(|e| AnalyzerError::ParseError(format!("invalid JSON response: {}", e)))
+    }
+
+    async fn get_bytes(&self, url: &str, max_size: usize) -> Option<Vec<u8>> {
+        let resp = self.inner
+            .get(url)
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+            .ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let bytes = resp.bytes().await.ok()?;
+        if bytes.len() > max_size {
+            return None;
+        }
+        Some(bytes.to_vec())
+    }
+}
+
+/// Shared static client, used in production.
+pub(crate) fn shared_client() -> &'static RealHttpClient {
+    static CLIENT: OnceLock<RealHttpClient> = OnceLock::new();
+    CLIENT.get_or_init(|| RealHttpClient::new())
+}
+
+// ── Extract Recipe ──────────────────────────────────────────────
+
 /// Extract a structured recipe from text + optional images using LLM function calling.
 pub async fn extract_recipe(
+    client: &impl HttpClient,
     text: &str,
     image_urls: &[String],
     model: &str,
@@ -16,7 +89,7 @@ pub async fn extract_recipe(
 
     let base_url = "https://api.deepseek.com";
 
-    let msg_content = build_message_content(text, image_urls).await;
+    let msg_content = build_message_content(client, text, image_urls).await;
 
     let model_label = model;
     let img_count = if !image_urls.is_empty() {
@@ -90,30 +163,11 @@ pub async fn extract_recipe(
         "tool_choice": "required",
     });
 
-    let client = shared_client();
-    let response = client
-        .post(format!("{}/chat/completions", base_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&request_body)
-        .send()
-        .await
-        .map_err(|e| AnalyzerError::ApiError(format!("request failed: {}", e)))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(AnalyzerError::ApiError(format!(
-            "HTTP {}: {}",
-            status,
-            &body[..body.len().min(200)]
-        )));
-    }
-
-    let response_json: Value = response
-        .json()
-        .await
-        .map_err(|e| AnalyzerError::ParseError(format!("invalid JSON response: {}", e)))?;
+    let response_json = client.post_json(
+        &format!("{}/chat/completions", base_url),
+        &api_key,
+        request_body,
+    ).await?;
 
     let recipe = parse_response(response_json)?;
     let recipe_name = if recipe.name.is_empty() { "未识别" } else { &recipe.name };
@@ -181,40 +235,17 @@ const SYSTEM_PROMPT: &str = r#"你是专业厨师和食谱分析师。你擅长�
 
 // ── Image Handling ─────────────────────────────────────────────────
 
-async fn build_message_content(text: &str, image_urls: &[String]) -> Vec<Value> {
+async fn build_message_content(client: &impl HttpClient, text: &str, image_urls: &[String]) -> Vec<Value> {
     let mut content: Vec<Value> = vec![json!({"type": "text", "text": text})];
 
     let max_images = 3;
     for url in image_urls.iter().take(max_images) {
-        if let Some(data) = download_image(url).await {
+        if let Some(data) = client.get_bytes(url, 5 * 1024 * 1024).await {
             let block = make_image_block(&data);
             content.push(block);
         }
     }
     content
-}
-
-fn shared_client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| reqwest::Client::new())
-}
-
-async fn download_image(url: &str) -> Option<Vec<u8>> {
-    let resp = shared_client()
-        .get(url)
-        .timeout(std::time::Duration::from_secs(15))
-        .send()
-        .await
-        .ok()?;
-    if !resp.status().is_success() {
-        return None;
-    }
-    let bytes = resp.bytes().await.ok()?;
-    let max_size = 5 * 1024 * 1024;
-    if bytes.len() > max_size {
-        return None;
-    }
-    Some(bytes.to_vec())
 }
 
 fn make_image_block(data: &[u8]) -> Value {
@@ -776,5 +807,99 @@ mod tests {
             let recipe = fallback_parse(text);
             assert_eq!(recipe.is_food, expected_food, "text: {}", text);
         }
+    }
+
+    // ── Mock client + extract_recipe tests ─────────────────────────
+
+    struct TestClient {
+        post_response: Option<Value>,
+        post_error: Option<String>,
+        image_bytes: Option<Vec<u8>>,
+    }
+
+    impl TestClient {
+        fn with_response(val: Value) -> Self {
+            Self { post_response: Some(val), post_error: None, image_bytes: None }
+        }
+        fn with_error(msg: &str) -> Self {
+            Self { post_response: None, post_error: Some(msg.into()), image_bytes: None }
+        }
+    }
+
+    impl HttpClient for TestClient {
+        async fn post_json(&self, _url: &str, _api_key: &str, _body: Value) -> Result<Value, AnalyzerError> {
+            if let Some(val) = &self.post_response {
+                return Ok(val.clone());
+            }
+            if let Some(msg) = &self.post_error {
+                return Err(AnalyzerError::ApiError(msg.clone()));
+            }
+            Err(AnalyzerError::ApiError("unexpected call".into()))
+        }
+        async fn get_bytes(&self, _url: &str, _max_size: usize) -> Option<Vec<u8>> {
+            self.image_bytes.clone()
+        }
+    }
+
+    #[test]
+    fn test_extract_recipe_success() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let client = TestClient::with_response(json!({
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {
+                            "name": "output_recipe",
+                            "arguments": r#"{"name":"测试菜","ingredients":[{"name":"肉"}],"steps":[{"title":"步骤1","content":"做"}],"is_food":true}"#
+                        }
+                    }]
+                }
+            }]
+        }));
+        let recipe = rt.block_on(extract_recipe(
+            &client, "做菜步骤", &[], "deepseek-chat", Some("sk-test"),
+        )).unwrap();
+        assert_eq!(recipe.name, "测试菜");
+        assert_eq!(recipe.ingredients[0].name, "肉");
+        assert!(recipe.is_food);
+    }
+
+    #[test]
+    fn test_extract_recipe_api_error() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let client = TestClient::with_error("HTTP 500: Internal Server Error");
+        let result = rt.block_on(extract_recipe(
+            &client, "做菜步骤", &[], "deepseek-chat", Some("sk-test"),
+        ));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, AnalyzerError::ApiError(_)));
+        assert!(err.to_string().contains("500"));
+    }
+
+    #[test]
+    fn test_extract_recipe_with_images() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let client = TestClient {
+            post_response: Some(json!({
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "function": {
+                                "name": "output_recipe",
+                                "arguments": r#"{"name":"图片菜","ingredients":[{"name":"鱼"}],"steps":[{"title":"蒸","content":"清蒸"}],"is_food":true}"#
+                            }
+                        }]
+                    }
+                }]
+            })),
+            post_error: None,
+            image_bytes: Some(vec![0x89, 0x50, 0x4E, 0x47]),
+        };
+        let images = vec!["http://example.com/fish.png".to_string()];
+        let recipe = rt.block_on(extract_recipe(
+            &client, "鱼的做法", &images, "deepseek-chat", Some("sk-test"),
+        )).unwrap();
+        assert_eq!(recipe.name, "图片菜");
     }
 }

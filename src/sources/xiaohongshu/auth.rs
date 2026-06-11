@@ -198,3 +198,78 @@ fn print_login_instructions(qr_saved: bool, headless: bool) {
 
     println!("\n等待扫码中...");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cookie_path_ends_with_cookies_json() {
+        let path = cookie_path();
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        assert_eq!(name, "cookies.json");
+    }
+
+    #[test]
+    fn test_cookie_path_contains_xhs_recipe_dir() {
+        let path = cookie_path();
+        let path_str = path.to_string_lossy();
+        assert!(path_str.contains(".cache"));
+        assert!(path_str.contains("xhs-recipe"));
+    }
+
+    #[test]
+    fn test_cookie_serialize_deserialize_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cookies.json");
+
+        // This is what save_cookies does internally
+        let cookies = vec![Cookie {
+            name: "session".into(),
+            value: "abc123".into(),
+            domain: ".xiaohongshu.com".into(),
+            path: "/".into(),
+            ..Default::default()
+        }];
+        let json = serde_json::to_string_pretty(&cookies).unwrap();
+        std::fs::write(&path, &json).unwrap();
+        assert!(path.exists());
+
+        // This is what load_cookies does internally
+        let content = std::fs::read_to_string(&path).unwrap();
+        let loaded: Vec<Cookie> = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].name, "session");
+        assert_eq!(loaded[0].value, "abc123");
+    }
+
+    #[test]
+    fn test_cookie_serde_empty_vec() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cookies.json");
+
+        let json = serde_json::to_string_pretty(&Vec::<Cookie>::new()).unwrap();
+        std::fs::write(&path, &json).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let loaded: Vec<Cookie> = serde_json::from_str(&content).unwrap();
+        assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn test_cookie_file_creation_and_deletion() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cookies.json");
+
+        // Simulate has_cookies: path.exists()
+        assert!(!path.exists());
+
+        // Simulate save_cookies: write to file
+        std::fs::write(&path, "[]").unwrap();
+        assert!(path.exists());
+
+        // Simulate logout: remove file
+        std::fs::remove_file(&path).ok();
+        assert!(!path.exists());
+    }
+}

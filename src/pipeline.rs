@@ -34,6 +34,7 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
             &[]
         };
         let mut recipe = crate::analyzer::extract_recipe(
+            crate::analyzer::shared_client(),
             &text.full_text,
             image_urls,
             opts.llm_model,
