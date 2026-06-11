@@ -1,4 +1,4 @@
-use core::RawContent;
+use models::RawContent;
 
 pub mod base;
 pub mod xiaohongshu;

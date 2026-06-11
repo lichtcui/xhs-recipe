@@ -3,7 +3,7 @@ pub mod auth;
 pub mod scraper;
 pub mod url;
 
-use core::RawContent;
+use models::RawContent;
 use crate::SourceError;
 
 /// Fetch a Xiaohongshu note by URL.

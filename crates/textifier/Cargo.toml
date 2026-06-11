@@ -5,7 +5,7 @@ edition = "2021"
 description = "Media-to-text processing: video download, audio extraction, transcription"
 
 [dependencies]
-core = { path = "../core" }
+models = { path = "../models" }
 tokio = { version = "1", features = ["process", "fs"] }
 tempfile = "3"
 whisper-rs = "0.16"

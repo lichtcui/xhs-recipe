@@ -1,4 +1,4 @@
-use core::{Ingredient, Recipe, Step};
+use models::{Ingredient, Recipe, Step};
 use serde_json::{json, Value};
 
 /// Extract a structured recipe from text + optional images using LLM function calling.

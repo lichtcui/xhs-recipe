@@ -3,7 +3,7 @@
 /// Strategy:
 /// 1. zendriver-rs with stealth (primary — replaces Python bridge + playwright-rs)
 /// 2. reqwest direct HTTP (fallback — fast, no browser needed)
-use core::RawContent;
+use models::RawContent;
 use crate::SourceError;
 use std::time::Duration;
 

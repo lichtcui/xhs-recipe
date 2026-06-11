@@ -22,8 +22,8 @@ name = "analyzer"
 version = "0.1.0"
 dependencies = [
  "base64",
- "core",
  "dotenvy",
+ "models",
  "regex",
  "reqwest",
  "serde",
@@ -292,8 +292,8 @@ name = "cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "core",
  "dotenvy",
+ "models",
  "pipeline",
  "presentation",
  "sources",
@@ -352,14 +352,6 @@ dependencies = [
  "serde_json",
  "time",
  "url",
-]
-
-[[package]]
-name = "core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1135,6 +1127,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "models"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1281,7 +1281,7 @@ name = "pipeline"
 version = "0.1.0"
 dependencies = [
  "analyzer",
- "core",
+ "models",
  "sources",
  "textifier",
  "tokio",
@@ -1322,7 +1322,7 @@ name = "presentation"
 version = "0.1.0"
 dependencies = [
  "colored",
- "core",
+ "models",
  "serde_json",
 ]
 
@@ -1730,7 +1730,7 @@ dependencies = [
 name = "sources"
 version = "0.1.0"
 dependencies = [
- "core",
+ "models",
  "regex",
  "reqwest",
  "serde",
@@ -1839,7 +1839,7 @@ dependencies = [
 name = "textifier"
 version = "0.1.0"
 dependencies = [
- "core",
+ "models",
  "reqwest",
  "tempfile",
  "tokio",

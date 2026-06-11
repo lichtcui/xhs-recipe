@@ -1,4 +1,4 @@
-use core::Recipe;
+use models::Recipe;
 use colored::*;
 
 /// Render recipe to terminal with ANSI colors, matching Python `rich` output.
@@ -88,7 +88,7 @@ fn render_not_food(recipe: &Recipe) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::{Ingredient, Step};
+    use models::{Ingredient, Step};
 
     fn sample_recipe() -> Recipe {
         Recipe {

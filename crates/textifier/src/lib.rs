@@ -1,4 +1,4 @@
-use core::{RawContent, TextContent};
+use models::{RawContent, TextContent};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -395,7 +395,7 @@ async fn transcribe_video(url: &str, whisper_model: &str) -> Result<String, Text
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::RawContent;
+    use models::RawContent;
 
     #[test]
     fn test_process_no_video() {

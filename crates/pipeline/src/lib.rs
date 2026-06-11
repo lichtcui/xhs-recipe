@@ -1,4 +1,4 @@
-use core::Recipe;
+use models::Recipe;
 
 pub struct ExtractOptions<'a> {
     pub url: &'a str,
@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn test_extract_unsupported_url() {
-        // Manually create tokio runtime to avoid core crate shadowing in macro
+        // Manually create tokio runtime since #[tokio::test] macro may not work here
         let rt = tokio::runtime::Runtime::new().unwrap();
         let opts = ExtractOptions {
             url: "https://example.com",

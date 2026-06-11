@@ -5,7 +5,7 @@ edition = "2021"
 description = "Pipeline orchestration: fetch → textify → analyze"
 
 [dependencies]
-core = { path = "../core" }
+models = { path = "../models" }
 sources = { path = "../sources" }
 textifier = { path = "../textifier" }
 analyzer = { path = "../analyzer" }

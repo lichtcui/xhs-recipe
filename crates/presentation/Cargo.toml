@@ -5,6 +5,6 @@ edition = "2021"
 description = "Terminal rendering and file output for recipes"
 
 [dependencies]
-core = { path = "../core" }
+models = { path = "../models" }
 serde_json = "1"
 colored = "2"
