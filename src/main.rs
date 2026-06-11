@@ -19,7 +19,7 @@ enum Command {
         model: String,
         #[arg(long, default_value = "qwen3-asr-0.6b")]
         asr_model: String,
-        #[arg(long = "images", default_value_t = true)]
+        #[arg(long = "no-images", action = clap::ArgAction::SetFalse)]
         images: bool,
     },
     /// 初始化项目环境
@@ -218,6 +218,21 @@ mod tests {
                 assert_eq!(output.unwrap().to_str().unwrap(), "recipe.md");
                 assert_eq!(model, "claude-3-5-sonnet-20241022");
                 assert_eq!(asr_model, "qwen3-asr-1.7b");
+            }
+            _ => panic!("expected Extract"),
+        }
+    }
+
+    #[test]
+    fn test_cli_extract_no_images() {
+        let cli = Cli::try_parse_from([
+            "xhs-recipe", "extract",
+            "http://xhslink.com/test",
+            "--no-images",
+        ]).unwrap();
+        match cli.command {
+            Command::Extract { images, .. } => {
+                assert!(!images);
             }
             _ => panic!("expected Extract"),
         }
