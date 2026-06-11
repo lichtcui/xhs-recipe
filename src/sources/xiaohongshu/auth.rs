@@ -7,8 +7,7 @@ use zendriver::Cookie;
 
 /// Get the cookie file path (~/.cache/xhs-recipe/cookies.json).
 pub fn cookie_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    PathBuf::from(home)
+    crate::home_dir()
         .join(".cache")
         .join("xhs-recipe")
         .join("cookies.json")

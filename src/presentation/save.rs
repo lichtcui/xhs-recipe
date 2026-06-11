@@ -55,10 +55,9 @@ fn save_md(recipe: &Recipe, path: &Path) -> Result<(), Box<dyn std::error::Error
     }
     if !recipe.steps.is_empty() {
         lines.push("## 步骤".into());
-        let nums = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
         for (i, step) in recipe.steps.iter().enumerate() {
             let fallback = format!("{}.", i + 1);
-            let num = nums.get(i).copied().unwrap_or(&fallback);
+            let num = crate::STEP_NUMS.get(i).copied().unwrap_or(&fallback);
             let time_str = step.time.as_ref().map_or(String::new(), |t| format!("（{}）", t));
             let label = if step.title.is_empty() {
                 format!("步骤{}", i + 1)

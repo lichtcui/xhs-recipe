@@ -53,7 +53,7 @@ impl std::error::Error for TextifierError {}
 // ── Video download (yt-dlp) ───────────────────────────────────────
 
 fn find_yt_dlp() -> Result<String, TextifierError> {
-    if let Ok(path) = which("yt-dlp") {
+    if let Some(path) = crate::which("yt-dlp") {
         return Ok(path);
     }
     if let Ok(exe) = std::env::current_exe() {
@@ -65,17 +65,6 @@ fn find_yt_dlp() -> Result<String, TextifierError> {
         }
     }
     Err(TextifierError::YtDlpNotFound)
-}
-
-fn which(name: &str) -> Result<String, ()> {
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    for dir in std::env::split_paths(&path) {
-        let candidate = dir.join(name);
-        if candidate.exists() {
-            return Ok(candidate.to_string_lossy().to_string());
-        }
-    }
-    Err(())
 }
 
 fn download_video(url: &str, output_dir: &Path) -> Result<Option<PathBuf>, TextifierError> {
@@ -190,7 +179,7 @@ fn transcribe_audio(audio_path: &Path, model_name: &str) -> Result<Option<String
 // ── Qwen3-ASR helpers ─────────────────────────────────────────────
 
 fn find_qwen_asr() -> Result<String, TextifierError> {
-    if let Ok(path) = which("qwen-asr") {
+    if let Some(path) = crate::which("qwen-asr") {
         return Ok(path);
     }
     Err(TextifierError::QwenAsrNotFound)
@@ -208,8 +197,7 @@ fn resolve_model_dir(model_name: &str) -> Result<String, TextifierError> {
     }
 
     // Look in default cache directory (~/.cache/qwen-asr/<model_name>)
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    let cache_dir = std::path::PathBuf::from(home)
+    let cache_dir = crate::home_dir()
         .join(".cache")
         .join("qwen-asr")
         .join(model_name);

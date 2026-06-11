@@ -163,19 +163,12 @@ fn run_logout() {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-fn home_dir() -> std::path::PathBuf {
-    std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| "/tmp".into())
+fn which(name: &str) -> Option<String> {
+    xhs_recipe::which(name)
 }
 
-fn which(name: &str) -> Option<String> {
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    for dir in std::env::split_paths(&path) {
-        let candidate = dir.join(name);
-        if candidate.exists() {
-            return Some(candidate.to_string_lossy().to_string());
-        }
-    }
-    None
+fn home_dir() -> std::path::PathBuf {
+    xhs_recipe::home_dir()
 }
 
 #[cfg(test)]
