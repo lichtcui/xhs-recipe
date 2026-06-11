@@ -1,9 +1,24 @@
+use std::sync::atomic::AtomicBool;
+
 pub mod models;
 pub mod pipeline;
 pub mod sources;
 pub mod textifier;
 pub mod analyzer;
 pub mod presentation;
+
+/// Global verbose flag, set by CLI parser.
+pub static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+/// Print a message only when verbose mode is enabled.
+#[macro_export]
+macro_rules! vprintln {
+    ($($arg:tt)*) => {{
+        if $crate::VERBOSE.load(std::sync::atomic::Ordering::Relaxed) {
+            println!($($arg)*);
+        }
+    }};
+}
 
 // ── Shared utilities ────────────────────────────────────────────
 

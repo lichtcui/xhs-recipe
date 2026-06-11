@@ -95,12 +95,12 @@ fn download_video(url: &str, output_dir: &Path) -> Result<Option<PathBuf>, Texti
         if matches!(ext, "mp4" | "webm" | "mkv") {
             let size = path.metadata().map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
             let fname = path.file_name().unwrap_or_default().to_string_lossy();
-            println!("  ✓ 视频文件: {} ({:.1} MB)", fname, size);
+            crate::vprintln!("  ✓ 视频文件: {} ({:.1} MB)", fname, size);
             return Ok(Some(path));
         }
     }
 
-    println!("  ✗ 未找到下载的视频文件");
+    crate::vprintln!("  ✗ 未找到下载的视频文件");
     Ok(None)
 }
 
@@ -110,7 +110,7 @@ fn extract_audio(video_path: &Path, output_dir: &Path) -> Result<Option<PathBuf>
     let stem = video_path.file_stem().unwrap_or_default();
     let audio_path = output_dir.join(format!("{}.wav", stem.to_string_lossy()));
 
-    println!("  ↓ 提取音频...");
+    crate::vprintln!("  ↓ 提取音频...");
     let result = Command::new("ffmpeg")
         .args([
             "-y",
@@ -136,7 +136,7 @@ fn extract_audio(video_path: &Path, output_dir: &Path) -> Result<Option<PathBuf>
 
     if audio_path.exists() {
         let size = audio_path.metadata().map(|m| m.len() as f64 / 1024.0).unwrap_or(0.0);
-        println!("  ✓ 音频提取完成 ({:.0} KB)", size);
+        crate::vprintln!("  ✓ 音频提取完成 ({:.0} KB)", size);
         Ok(Some(audio_path))
     } else {
         Ok(None)
@@ -149,7 +149,7 @@ fn transcribe_audio(audio_path: &Path, model_name: &str) -> Result<Option<String
     let qwen_asr = find_qwen_asr()?;
     let model_dir = resolve_model_dir(model_name)?;
 
-    println!("  ↓ 转写音频中 (Qwen3-ASR, {})...", model_name);
+    crate::vprintln!("  ↓ 转写音频中 (Qwen3-ASR, {})...", model_name);
 
     let output = Command::new(&qwen_asr)
         .args([
@@ -168,10 +168,10 @@ fn transcribe_audio(audio_path: &Path, model_name: &str) -> Result<Option<String
 
     let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if text.is_empty() {
-        println!("  ⚠ 转写结果为空");
+        crate::vprintln!("  ⚠ 转写结果为空");
         Ok(None)
     } else {
-        println!("  ✓ 转写完成 (约{}字)", text.chars().count());
+        crate::vprintln!("  ✓ 转写完成 (约{}字)", text.chars().count());
         Ok(Some(text))
     }
 }

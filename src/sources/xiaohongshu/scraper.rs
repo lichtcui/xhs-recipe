@@ -58,7 +58,7 @@ async fn scrape_zendriver(url: &str, _note_id: &str) -> Result<RawContent, Sourc
         if let Err(e) = jar.set_many(saved).await {
             println!("  ⚠ 设置 Cookie 失败: {}", e);
         } else {
-            println!("  ✓ 已设置 Cookie ({} 个)", jar.all().await.map(|c| c.len()).unwrap_or(0));
+            crate::vprintln!("  ✓ 已设置 Cookie ({} 个)", jar.all().await.map(|c| c.len()).unwrap_or(0));
         }
     }
 
@@ -68,7 +68,7 @@ async fn scrape_zendriver(url: &str, _note_id: &str) -> Result<RawContent, Sourc
         .await
         .map_err(|e| SourceError::FetchFailed(format!("zendriver goto: {}", e)))?;
     tab.wait_for_load().await.ok();
-    println!("  ✓ 页面加载完成");
+    crate::vprintln!("  ✓ 页面加载完成");
 
     // Short delay for dynamic content
     tokio::time::sleep(Duration::from_secs(2)).await;

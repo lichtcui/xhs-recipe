@@ -1,11 +1,14 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 
 #[derive(Parser)]
-#[command(name = "xhs-recipe", about = "从社交媒体链接提取菜谱的 CLI 工具")]
+#[command(name = "xhs-recipe", version = env!("CARGO_PKG_VERSION"), about = "从社交媒体链接提取菜谱的 CLI 工具")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    #[arg(short, long, global = true, help = "Show verbose output")]
+    verbose: bool,
 }
 
 #[derive(Subcommand)]
@@ -21,6 +24,8 @@ enum Command {
         asr_model: String,
         #[arg(long = "no-images", action = clap::ArgAction::SetFalse)]
         images: bool,
+        #[arg(short, long, default_value_t = 300, help = "Extraction timeout in seconds")]
+        timeout: u64,
     },
     /// 初始化项目环境
     Setup,
@@ -38,10 +43,11 @@ enum Command {
 fn main() {
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
+    xhs_recipe::VERBOSE.store(cli.verbose, Ordering::Relaxed);
 
     match cli.command {
-        Command::Extract { url, output, model, asr_model, images } => {
-            run_extract(&url, output.as_deref(), &model, &asr_model, images);
+        Command::Extract { url, output, model, asr_model, images, timeout } => {
+            run_extract(&url, output.as_deref(), &model, &asr_model, images, timeout);
         }
         Command::Setup => run_setup(),
         Command::Login { headless, timeout } => run_login(headless, timeout),
@@ -49,8 +55,8 @@ fn main() {
     }
 }
 
-fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_model: &str, images: bool) {
-    println!("\n🔍 正在处理: {}", url);
+fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_model: &str, images: bool, timeout: u64) {
+    xhs_recipe::vprintln!("\n🔍 正在处理: {}", url);
 
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
     let opts = xhs_recipe::pipeline::ExtractOptions {
@@ -59,6 +65,7 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_mod
         llm_model: model,
         send_images: images,
         api_key: None,
+        timeout_secs: timeout,
     };
 
     match rt.block_on(xhs_recipe::pipeline::extract(opts)) {
@@ -185,7 +192,7 @@ mod tests {
     fn test_cli_extract_url() {
         let cli = Cli::try_parse_from(["xhs-recipe", "extract", "http://xhslink.com/test"]).unwrap();
         match cli.command {
-            Command::Extract { url, model, output, asr_model, images } => {
+            Command::Extract { url, model, output, asr_model, images, .. } => {
                 assert_eq!(url, "http://xhslink.com/test");
                 assert_eq!(model, "deepseek-chat");
                 assert!(images);
