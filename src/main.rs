@@ -97,6 +97,8 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_mod
 }
 
 fn run_setup() {
+    let mut missing = Vec::new();
+
     println!("📦 检查系统依赖...");
 
     if which("ffmpeg").is_some() {
@@ -104,12 +106,14 @@ fn run_setup() {
     } else {
         println!("  ✗ ffmpeg 未安装");
         println!("    macOS: brew install ffmpeg");
+        missing.push("ffmpeg");
     }
 
     if which("yt-dlp").is_some() {
         println!("  ✓ yt-dlp 已安装");
     } else {
         println!("  ✗ yt-dlp 未安装（pip install yt-dlp）");
+        missing.push("yt-dlp");
     }
 
     if which("qwen-asr").is_some() {
@@ -132,6 +136,7 @@ fn run_setup() {
         println!("  ✗ qwen-asr 未安装");
         println!("    运行: cargo install qwen-asr-cli");
         println!("    然后: qwen-asr download qwen3-asr-0.6b");
+        missing.push("qwen-asr");
     }
 
     println!();
@@ -139,10 +144,21 @@ fn run_setup() {
     println!("  运行: playwright install chromium");
     println!();
     println!("🔑 配置 API Key");
-    println!("  将 DEEPSEEK_API_KEY 添加到 .env 文件");
-    println!("  或存入 macOS 钥匙串: security add-generic-password -a \"$USER\" -s deepseek-api -w \"sk-...\"");
+    if std::env::var("DEEPSEEK_API_KEY").ok().filter(|k| !k.is_empty()).is_some() {
+        println!("  ✓ DEEPSEEK_API_KEY 已设置");
+    } else {
+        println!("  DEEPSEEK_API_KEY 未设置。将密钥添加到 .env 文件：");
+        println!("    DEEPSEEK_API_KEY=sk-...");
+        println!("  或使用 macOS 钥匙串：");
+        println!("    security add-generic-password -a \"$USER\" -s deepseek-api -w \"sk-...\"");
+    }
     println!();
-    println!("完成！运行 xhs-recipe extract <链接> 开始使用");
+
+    if missing.is_empty() {
+        println!("✅ 全部就绪！运行 xhs-recipe extract <链接> 开始使用");
+    } else {
+        println!("⚠ 缺少: {}。按上述指引安装后重试", missing.join(", "));
+    }
 }
 
 fn run_login(headless: bool, timeout: u32) {

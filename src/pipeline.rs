@@ -1,4 +1,7 @@
+use crate::analyzer::AnalyzerError;
 use crate::models::Recipe;
+use crate::sources::SourceError;
+use crate::textifier::TextifierError;
 use std::time::Duration;
 
 pub struct ExtractOptions<'a> {
@@ -15,17 +18,13 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
     let timeout = Duration::from_secs(opts.timeout_secs);
     tokio::time::timeout(timeout, async {
         // Step 1: Fetch
-        let raw = crate::sources::fetch(opts.url)
-            .await
-            .map_err(|e| PipelineError::Source(e.to_string()))?;
+        let raw = crate::sources::fetch(opts.url).await?;
         crate::vprintln!("  ✓ 标题: {}", raw.title);
         let note_type = if raw.has_video { "视频笔记" } else { "图文笔记" };
         crate::vprintln!("  ✓ 类型: {} | 图片: {} 张", note_type, raw.image_urls.len());
 
         // Step 2: Textify
-        let text = crate::textifier::process(&raw, opts.asr_model)
-            .await
-            .map_err(|e| PipelineError::Textifier(e.to_string()))?;
+        let text = crate::textifier::process(&raw, opts.asr_model).await?;
 
         // Step 3: Analyze
         let image_urls: &[String] = if opts.send_images {
@@ -40,8 +39,7 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
             opts.llm_model,
             opts.api_key,
         )
-        .await
-        .map_err(|e| PipelineError::Analyzer(e.to_string()))?;
+        .await?;
 
         recipe.source_url = raw.source_url.clone();
         Ok(recipe)
@@ -52,12 +50,12 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
 
 #[derive(Debug, thiserror::Error)]
 pub enum PipelineError {
-    #[error("source error: {0}")]
-    Source(String),
-    #[error("textifier error: {0}")]
-    Textifier(String),
-    #[error("analyzer error: {0}")]
-    Analyzer(String),
+    #[error("{0}")]
+    Source(#[from] SourceError),
+    #[error("{0}")]
+    Textifier(#[from] TextifierError),
+    #[error("{0}")]
+    Analyzer(#[from] AnalyzerError),
     #[error("提取超时，请增大 --timeout 值")]
     Timeout,
 }
@@ -94,7 +92,7 @@ mod tests {
         let result = rt.block_on(extract(opts));
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, PipelineError::Source(_)));
+        assert!(matches!(err, PipelineError::Source(SourceError::Unsupported(_))));
         assert!(err.to_string().contains("unsupported URL"));
     }
 }

@@ -7,5 +7,5 @@ use super::SourceError;
 
 /// Fetch a Xiaohongshu note by URL.
 pub async fn fetch(url: &str) -> Result<RawContent, SourceError> {
-    scraper::scrape(url, "").await
+    scraper::scrape(url).await
 }

@@ -54,12 +54,21 @@ impl HttpClient for RealHttpClient {
             .timeout(std::time::Duration::from_secs(15))
             .send()
             .await
+            .map_err(|e| {
+                crate::vprintln!("  ⚠ 图片下载失败 (连接): {} — {}", &url[..url.len().min(80)], e);
+                e
+            })
             .ok()?;
         if !resp.status().is_success() {
+            crate::vprintln!("  ⚠ 图片下载失败 (HTTP {}): {}", resp.status(), &url[..url.len().min(80)]);
             return None;
         }
-        let bytes = resp.bytes().await.ok()?;
+        let bytes = resp.bytes().await.map_err(|e| {
+            crate::vprintln!("  ⚠ 图片读取失败: {} — {}", &url[..url.len().min(80)], e);
+            e
+        }).ok()?;
         if bytes.len() > max_size {
+            crate::vprintln!("  ⚠ 图片过大 ({:.1} MB > {} MB): {}", bytes.len() as f64 / 1_048_576.0, max_size / 1_048_576, &url[..url.len().min(80)]);
             return None;
         }
         Some(bytes.to_vec())
@@ -185,25 +194,43 @@ fn resolve_api_key() -> Result<String, AnalyzerError> {
         }
     }
     // Try macOS keychain
-    if let Ok(output) = std::process::Command::new("security")
-        .args([
-            "find-generic-password",
-            "-a",
-            &std::env::var("USER").unwrap_or_default(),
-            "-s",
-            "deepseek-api",
-            "-w",
-        ])
-        .output()
-    {
-        if output.status.success() {
-            let key = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !key.is_empty() {
-                return Ok(key);
+    if cfg!(target_os = "macos") {
+        if let Ok(output) = std::process::Command::new("security")
+            .args([
+                "find-generic-password",
+                "-a",
+                &std::env::var("USER").unwrap_or_default(),
+                "-s",
+                "deepseek-api",
+                "-w",
+            ])
+            .output()
+        {
+            if output.status.success() {
+                let key = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !key.is_empty() {
+                    return Ok(key);
+                }
             }
         }
     }
-    Err(AnalyzerError::MissingApiKey)
+    Err(AnalyzerError::MissingApiKey(platform_api_key_hint().to_string()))
+}
+
+fn platform_api_key_hint() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "未设置 DEEPSEEK_API_KEY。请通过以下方式之一配置：\n\
+         1. 设置环境变量：export DEEPSEEK_API_KEY=sk-...\n\
+         2. 存入 macOS 钥匙串：security add-generic-password -a \"$USER\" -s deepseek-api -w \"sk-...\""
+    } else if cfg!(target_os = "windows") {
+        "未设置 DEEPSEEK_API_KEY。请通过以下方式配置：\n\
+         1. 设置环境变量：set DEEPSEEK_API_KEY=sk-...\n\
+         2. 添加到 .env 文件：DEEPSEEK_API_KEY=sk-..."
+    } else {
+        "未设置 DEEPSEEK_API_KEY。请通过以下方式配置：\n\
+         1. 设置环境变量：export DEEPSEEK_API_KEY=sk-...\n\
+         2. 添加到 .env 文件：DEEPSEEK_API_KEY=sk-..."
+    }
 }
 
 // ── System Prompt ──────────────────────────────────────────────────
@@ -542,11 +569,8 @@ pub enum AnalyzerError {
     ApiError(String),
     #[error("parse error: {0}")]
     ParseError(String),
-    #[error("未设置 DEEPSEEK_API_KEY。请通过以下方式之一配置：\n\
-             1. 设置环境变量：export DEEPSEEK_API_KEY=sk-...\n\
-             2. 存入 macOS 钥匙串：security add-generic-password -a \"$USER\" \
-             -s deepseek-api -w \"sk-...\"")]
-    MissingApiKey,
+    #[error("{0}")]
+    MissingApiKey(String),
 }
 
 #[cfg(test)]

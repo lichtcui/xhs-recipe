@@ -7,7 +7,7 @@ use crate::models::RawContent;
 use super::super::SourceError;
 use std::time::Duration;
 
-pub async fn scrape(url: &str, note_id: &str) -> Result<RawContent, SourceError> {
+pub async fn scrape(url: &str) -> Result<RawContent, SourceError> {
     // Require saved cookies — login is a separate step, extract does not auto-login.
     if !super::auth::has_cookies() {
         return Err(SourceError::FetchFailed(
@@ -16,14 +16,14 @@ pub async fn scrape(url: &str, note_id: &str) -> Result<RawContent, SourceError>
     }
 
     // 1. zendriver-rs (stealth built-in, replaces Python bridge entirely)
-    match scrape_zendriver(url, note_id).await {
+    match scrape_zendriver(url).await {
         Ok(raw) if is_valid(&raw.title) => return Ok(raw),
         Ok(_) => {}  // fall through to HTTP fallback
         Err(ref e) if is_auth_error(e) => return Err(e.clone()),
         Err(_) => {}  // fall through to HTTP fallback
     }
     // 2. reqwest direct HTTP (fastest path when it works)
-    scrape_http(url, note_id).await
+    scrape_http(url).await
 }
 
 fn is_auth_error(err: &SourceError) -> bool {
@@ -42,7 +42,7 @@ fn is_valid(title: &str) -> bool {
 
 // ── 1. zendriver-rs (stealth built-in) ───────────────────────────────
 
-async fn scrape_zendriver(url: &str, _note_id: &str) -> Result<RawContent, SourceError> {
+async fn scrape_zendriver(url: &str) -> Result<RawContent, SourceError> {
     let browser = zendriver::Browser::builder()
         .headless(true)
         .lang(String::from("zh-CN"))
@@ -143,7 +143,7 @@ fn parse_next_data(json_str: &str) -> Option<(String, String, Vec<String>, bool)
 
 // ── 2. reqwest direct HTTP (fallback) ────────────────────────────────
 
-async fn scrape_http(url: &str, _note_id: &str) -> Result<RawContent, SourceError> {
+async fn scrape_http(url: &str) -> Result<RawContent, SourceError> {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
         .redirect(reqwest::redirect::Policy::limited(10))
