@@ -52,7 +52,7 @@ fn main() {
 fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_model: &str, images: bool) {
     println!("\n🔍 正在处理: {}", url);
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
     let opts = xhs_recipe::pipeline::ExtractOptions {
         url,
         asr_model,
@@ -141,7 +141,7 @@ fn run_setup() {
 fn run_login(headless: bool, timeout: u32) {
     println!("📱 小红书登录");
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
     match rt.block_on(xhs_recipe::sources::xiaohongshu::auth::login(headless, timeout)) {
         Ok(true) => {
             println!("\n现在可以运行 xhs-recipe extract 来提取菜谱了！");
@@ -157,7 +157,7 @@ fn run_login(headless: bool, timeout: u32) {
 }
 
 fn run_logout() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
     rt.block_on(xhs_recipe::sources::xiaohongshu::auth::logout());
 }
 

@@ -5,7 +5,6 @@ use std::sync::OnceLock;
 /// Extract a structured recipe from text + optional images using LLM function calling.
 pub async fn extract_recipe(
     text: &str,
-    _title: &str,
     image_urls: &[String],
     model: &str,
     api_key: Option<&str>,
@@ -25,7 +24,7 @@ pub async fn extract_recipe(
     } else {
         String::new()
     };
-    println!("  → 发送给 {} 分析... ({} 字{})", model_label, text.chars().count(), img_count);
+    println!("  → 发送给 {} 分析... ({} 字{})", model_label, text.len(), img_count);
 
     let request_body = json!({
         "model": model,
@@ -508,7 +507,6 @@ fn extract_name(text: &str) -> &str {
 
 #[derive(Debug)]
 pub enum AnalyzerError {
-    NotImplemented,
     ApiError(String),
     ParseError(String),
     MissingApiKey,
@@ -517,7 +515,6 @@ pub enum AnalyzerError {
 impl std::fmt::Display for AnalyzerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotImplemented => write!(f, "analyzer not yet implemented"),
             Self::ApiError(msg) => write!(f, "API error: {}", msg),
             Self::ParseError(msg) => write!(f, "parse error: {}", msg),
             Self::MissingApiKey => write!(

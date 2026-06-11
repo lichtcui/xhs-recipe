@@ -4,9 +4,9 @@ use regex::Regex;
 /// Check if a URL is a Xiaohongshu URL.
 pub fn is_xhs_url(url: &str) -> bool {
     let patterns = [
-        Regex::new(r"xiaohongshu\.com/explore/[a-f0-9]+").unwrap(),
-        Regex::new(r"xiaohongshu\.com/discovery/item/[a-f0-9]+").unwrap(),
-        Regex::new(r"xhslink\.com/\w+").unwrap(),
+        Regex::new(r"xiaohongshu\.com/explore/[a-f0-9]+").expect("static regex"),
+        Regex::new(r"xiaohongshu\.com/discovery/item/[a-f0-9]+").expect("static regex"),
+        Regex::new(r"xhslink\.com/\w+").expect("static regex"),
     ];
     patterns.iter().any(|p| p.is_match(url))
 }
@@ -14,8 +14,8 @@ pub fn is_xhs_url(url: &str) -> bool {
 /// Extract note ID from a resolved Xiaohongshu URL.
 pub fn extract_note_id(url: &str) -> Option<String> {
     for pattern in &[
-        Regex::new(r"/explore/([a-f0-9]+)").unwrap(),
-        Regex::new(r"/discovery/item/([a-f0-9]+)").unwrap(),
+        Regex::new(r"/explore/([a-f0-9]+)").expect("static regex"),
+        Regex::new(r"/discovery/item/([a-f0-9]+)").expect("static regex"),
     ] {
         if let Some(caps) = pattern.captures(url) {
             return Some(caps[1].to_string());

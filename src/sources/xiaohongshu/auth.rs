@@ -37,10 +37,14 @@ pub fn has_cookies() -> bool {
 pub fn save_cookies(cookies: &[Cookie]) {
     let path = cookie_path();
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!("  ⚠ 创建 Cookie 目录失败: {}", e);
+        }
     }
     if let Ok(json) = serde_json::to_string_pretty(&cookies) {
-        let _ = std::fs::write(&path, json);
+        if let Err(e) = std::fs::write(&path, json) {
+            eprintln!("  ⚠ 写入 Cookie 文件失败: {}", e);
+        }
     }
 }
 
