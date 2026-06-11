@@ -1841,7 +1841,6 @@ version = "0.1.0"
 dependencies = [
  "core",
  "reqwest",
- "serde_json",
  "tempfile",
  "tokio",
  "whisper-rs",

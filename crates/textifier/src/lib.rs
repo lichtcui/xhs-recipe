@@ -155,26 +155,13 @@ fn extract_audio(video_path: &Path, output_dir: &Path) -> Result<Option<PathBuf>
     }
 }
 
-// ── Transcription ─────────────────────────────────────────────────
-// Strategy: whisper-rs (native, if feature enabled) → Python bridge (fallback)
+// ── Transcription (whisper-rs native) ──────────────────────────────
 
 fn transcribe_audio(audio_path: &Path, model_size: &str) -> Result<Option<String>, TextifierError> {
-    #[cfg(feature = "whisper")]
-    {
-        match transcribe_whisper_rs(audio_path, model_size) {
-            Ok(Some(text)) => return Ok(Some(text)),
-            Ok(None) => println!("  ⚠ whisper-rs 返回空结果，回退到 Python..."),
-            Err(e) => println!("  ⚠ whisper-rs 失败 ({}), 回退到 Python bridge...", e),
-        }
-    }
-
-    // Fallback: Python faster-whisper bridge
-    transcribe_python_bridge(audio_path, model_size)
+    transcribe_whisper_rs(audio_path, model_size)
 }
 
 // ── whisper-rs (native) ───────────────────────────────────────────
-
-#[cfg(feature = "whisper")]
 
 fn transcribe_whisper_rs(audio_path: &Path, model_size: &str) -> Result<Option<String>, TextifierError> {
     let model_path = find_or_download_model(model_size)?;
@@ -222,7 +209,6 @@ fn transcribe_whisper_rs(audio_path: &Path, model_size: &str) -> Result<Option<S
     }
 }
 
-#[cfg(feature = "whisper")]
 fn find_or_download_model(size: &str) -> Result<String, TextifierError> {
     let cache_dir = dirs_next().join(".cache").join("whisper-rs");
     std::fs::create_dir_all(&cache_dir).ok();
@@ -280,7 +266,6 @@ fn find_or_download_model(size: &str) -> Result<String, TextifierError> {
 
 /// Download from a single URL, verify size, rename atomically.
 /// Returns the model path on success.
-#[cfg(feature = "whisper")]
 fn try_download(
     client: &reqwest::blocking::Client,
     url: &str,
@@ -329,13 +314,11 @@ fn try_download(
     Ok(model_path.to_string_lossy().to_string())
 }
 
-#[cfg(feature = "whisper")]
 fn dirs_next() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
     PathBuf::from(home)
 }
 
-#[cfg(any(feature = "whisper", test))]
 fn read_wav_i16(path: &Path) -> Result<Vec<i16>, TextifierError> {
     let file = std::fs::File::open(path)
         .map_err(|e| TextifierError::TranscriptionFailed(format!("open wav: {}", e)))?;
@@ -373,64 +356,6 @@ fn read_wav_i16(path: &Path) -> Result<Vec<i16>, TextifierError> {
         .collect();
 
     Ok(samples)
-}
-
-// ── Python bridge fallback ────────────────────────────────────────
-
-fn transcribe_python_bridge(audio_path: &Path, model_size: &str) -> Result<Option<String>, TextifierError> {
-    let python = if Command::new("python3").arg("--version").output().is_ok() {
-        "python3"
-    } else {
-        "python"
-    };
-
-    let script_path = locate_bridge_script();
-    let audio_str = audio_path.to_string_lossy().to_string();
-
-    println!("  ↓ 加载 Whisper 模型 ({}, cpu)...", model_size);
-    println!("  ↓ 转写音频中...");
-
-    let result = Command::new(python)
-        .args([&script_path, &audio_str, model_size])
-        .output()
-        .map_err(|e| TextifierError::TranscriptionFailed(format!("subprocess: {}", e)))?;
-
-    if !result.status.success() {
-        let stderr = String::from_utf8_lossy(&result.stderr);
-        return Err(TextifierError::TranscriptionFailed(stderr.trim().to_string()));
-    }
-
-    let stdout = String::from_utf8_lossy(&result.stdout);
-    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
-        if let Some(text) = json["text"].as_str() {
-            let trimmed = text.trim();
-            if !trimmed.is_empty() {
-                println!("  ✓ 转写完成 (约{}字)", trimmed.chars().count());
-                return Ok(Some(trimmed.to_string()));
-            }
-        }
-    }
-
-    println!("  ⚠ 转写结果为空");
-    Ok(None)
-}
-
-fn locate_bridge_script() -> String {
-    for p in &["scripts/transcribe.py", "../scripts/transcribe.py"] {
-        if Path::new(p).exists() {
-            return p.to_string();
-        }
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        let mut probe = exe.clone();
-        probe.pop();
-        for _ in 0..4 {
-            let candidate = probe.join("scripts").join("transcribe.py");
-            if candidate.exists() { return candidate.to_string_lossy().to_string(); }
-            probe.pop();
-        }
-    }
-    "scripts/transcribe.py".to_string()
 }
 
 // ── Orchestration ─────────────────────────────────────────────────
