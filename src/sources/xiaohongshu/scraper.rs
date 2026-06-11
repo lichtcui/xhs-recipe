@@ -18,9 +18,9 @@ pub async fn scrape(url: &str, note_id: &str) -> Result<RawContent, SourceError>
     // 1. zendriver-rs (stealth built-in, replaces Python bridge entirely)
     match scrape_zendriver(url, note_id).await {
         Ok(raw) if is_valid(&raw.title) => return Ok(raw),
-        Ok(_) => println!("  ⚠ zendriver-rs 返回无效内容，尝试 HTTP fallback..."),
+        Ok(_) => {}  // fall through to HTTP fallback
         Err(ref e) if is_auth_error(e) => return Err(e.clone()),
-        Err(ref e) => println!("  ⚠ zendriver-rs 失败 ({}), 尝试 HTTP fallback...", e),
+        Err(_) => {}  // fall through to HTTP fallback
     }
     // 2. reqwest direct HTTP (fastest path when it works)
     scrape_http(url, note_id).await
@@ -64,12 +64,11 @@ async fn scrape_zendriver(url: &str, _note_id: &str) -> Result<RawContent, Sourc
 
     let tab = browser.main_tab();
 
-    println!("  ↓ 加载页面...");
     tab.goto(url)
         .await
         .map_err(|e| SourceError::FetchFailed(format!("zendriver goto: {}", e)))?;
     tab.wait_for_load().await.ok();
-    println!("  ✓ 页面 DOM 加载完成");
+    println!("  ✓ 页面加载完成");
 
     // Short delay for dynamic content
     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -112,13 +111,9 @@ async fn extract_data(
 
     if let Some(ref s) = json_str {
         if let Some(parsed) = parse_next_data(s) {
-            println!("  ✓ 从 __NEXT_DATA__ 提取数据 (zendriver)");
             return Ok(parsed);
         }
     }
-
-    // Fallback to DOM extraction
-    println!("  ↓ __NEXT_DATA__ 未找到，尝试 DOM 提取...");
     let dom_js = r#"(()=>{const r={title:'',description:'',images:[],hasVideo:false};const og=document.querySelector('meta[property="og:title"]');if(og)r.title=og.getAttribute('content')||'';const od=document.querySelector('meta[property="og:description"]');if(od)r.description=od.getAttribute('content')||'';if(!r.title){for(const s of['#detail-title','.title','h1.title','[class*="title"]']){const e=document.querySelector(s);if(e&&e.innerText){r.title=e.innerText.trim();break;}}}const seen=new Set();for(const s of['.swiper-slide img','.carousel img','.note-image img']){document.querySelectorAll(s).forEach(i=>{const src=i.getAttribute('src')||i.getAttribute('data-src')||'';if(src&&src.includes('http')&&!seen.has(src)){r.images.push(src);seen.add(src);}});}r.hasVideo=!!document.querySelector('video');return JSON.stringify(r);})()"#;
 
     let dom_json: String = tab
@@ -130,7 +125,6 @@ async fn extract_data(
         .map_err(|e| SourceError::FetchFailed(format!("DOM JSON: {}", e)))?;
 
     if !data.title.is_empty() {
-        println!("  ✓ 从 DOM 中提取数据 (zendriver)");
         return Ok((data.title, data.description, data.images, data.has_video));
     }
 
@@ -181,7 +175,6 @@ async fn scrape_http(url: &str, _note_id: &str) -> Result<RawContent, SourceErro
     if let Some(raw) = extract_next_data_from_html(&body) {
         if let Ok(parsed) = parse_note_from_state(&raw) {
             if !parsed.title.is_empty() {
-                println!("  ✓ 从 HTML __NEXT_DATA__ 提取数据 (HTTP)");
                 return Ok(RawContent {
                     title: parsed.title,
                     text_content: parsed.description,

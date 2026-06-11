@@ -19,12 +19,12 @@ pub async fn extract_recipe(
     let msg_content = build_message_content(text, image_urls).await;
 
     let model_label = model;
-    println!("  → 发送给 {} 分析...", model_label);
-    println!("    文本长度: {} 字", text.chars().count());
-    if !image_urls.is_empty() {
-        let n = image_urls.len().min(3);
-        println!("    图片: {} 张", n);
-    }
+    let img_count = if !image_urls.is_empty() {
+        format!(" | 图片: {}", image_urls.len().min(3))
+    } else {
+        String::new()
+    };
+    println!("  → 发送给 {} 分析... ({} 字{})", model_label, text.chars().count(), img_count);
 
     let request_body = json!({
         "model": model,

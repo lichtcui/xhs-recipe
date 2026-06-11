@@ -16,7 +16,7 @@ pub async fn process(raw: &RawContent, asr_model: &str) -> Result<TextContent, T
             text_parts.push(format!("视频口述内容：\n{}", transcript));
         }
     } else {
-        println!("  ✓ 图文笔记，无需转写");
+        println!("  ✓ 无需转写");
     }
 
     Ok(TextContent {
@@ -83,7 +83,6 @@ fn download_video(url: &str, output_dir: &Path) -> Result<Option<PathBuf>, Texti
     let template = output_dir.join("%(id)s.%(ext)s");
     let template_str = template.to_string_lossy().to_string();
 
-    println!("  ↓ 下载视频（yt-dlp）...");
     let result = Command::new(&yt_dlp)
         .args([
             "--quiet", "--no-warnings", "--no-playlist",
@@ -97,8 +96,6 @@ fn download_video(url: &str, output_dir: &Path) -> Result<Option<PathBuf>, Texti
         let stderr = String::from_utf8_lossy(&result.stderr);
         return Err(TextifierError::DownloadFailed(stderr.trim().to_string()));
     }
-
-    println!("  ✓ 视频下载完成");
 
     for entry in std::fs::read_dir(output_dir).map_err(|e| {
         TextifierError::DownloadFailed(format!("cannot read output dir: {}", e))

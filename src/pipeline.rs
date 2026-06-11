@@ -11,13 +11,12 @@ pub struct ExtractOptions<'a> {
 /// Run the full extraction pipeline: fetch → textify → analyze.
 pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> {
     // Step 1: Fetch
-    println!("  ↓ 抓取页面内容...");
     let raw = crate::sources::fetch(opts.url)
         .await
         .map_err(|e| PipelineError::Source(e.to_string()))?;
     println!("  ✓ 标题: {}", raw.title);
-    println!("  ✓ 类型: {}", if raw.has_video { "视频笔记" } else { "图文笔记" });
-    println!("  ✓ 图片: {} 张", raw.image_urls.len());
+    let note_type = if raw.has_video { "视频笔记" } else { "图文笔记" };
+    println!("  ✓ 类型: {} | 图片: {} 张", note_type, raw.image_urls.len());
 
     // Step 2: Textify
     let text = crate::textifier::process(&raw, opts.asr_model)
