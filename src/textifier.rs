@@ -27,28 +27,19 @@ pub async fn process(raw: &RawContent, asr_model: &str) -> Result<TextContent, T
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum TextifierError {
+    #[error("yt-dlp not found")]
     YtDlpNotFound,
+    #[error("ffmpeg not found")]
     FfmpegNotFound,
+    #[error("qwen-asr not found (run: cargo install qwen-asr-cli)")]
     QwenAsrNotFound,
+    #[error("download failed: {0}")]
     DownloadFailed(String),
+    #[error("transcription failed: {0}")]
     TranscriptionFailed(String),
 }
-
-impl std::fmt::Display for TextifierError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::YtDlpNotFound => write!(f, "yt-dlp not found"),
-        Self::FfmpegNotFound => write!(f, "ffmpeg not found"),
-            Self::QwenAsrNotFound => write!(f, "qwen-asr not found (run: cargo install qwen-asr-cli)"),
-            Self::DownloadFailed(msg) => write!(f, "download failed: {}", msg),
-            Self::TranscriptionFailed(msg) => write!(f, "transcription failed: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for TextifierError {}
 
 // ── Video download (yt-dlp) ───────────────────────────────────────
 

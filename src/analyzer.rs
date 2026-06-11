@@ -505,30 +505,18 @@ fn extract_name(text: &str) -> &str {
 
 // ── Errors ─────────────────────────────────────────────────────────
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum AnalyzerError {
+    #[error("API error: {0}")]
     ApiError(String),
+    #[error("parse error: {0}")]
     ParseError(String),
+    #[error("未设置 DEEPSEEK_API_KEY。请通过以下方式之一配置：\n\
+             1. 设置环境变量：export DEEPSEEK_API_KEY=sk-...\n\
+             2. 存入 macOS 钥匙串：security add-generic-password -a \"$USER\" \
+             -s deepseek-api -w \"sk-...\"")]
     MissingApiKey,
 }
-
-impl std::fmt::Display for AnalyzerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ApiError(msg) => write!(f, "API error: {}", msg),
-            Self::ParseError(msg) => write!(f, "parse error: {}", msg),
-            Self::MissingApiKey => write!(
-                f,
-                "未设置 DEEPSEEK_API_KEY。请通过以下方式之一配置：\n\
-                 1. 设置环境变量：export DEEPSEEK_API_KEY=sk-...\n\
-                 2. 存入 macOS 钥匙串：security add-generic-password -a \"$USER\" \
-                 -s deepseek-api -w \"sk-...\""
-            ),
-        }
-    }
-}
-
-impl std::error::Error for AnalyzerError {}
 
 #[cfg(test)]
 mod tests {

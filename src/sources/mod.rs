@@ -13,21 +13,12 @@ pub fn supports_url(url: &str) -> bool {
     base::supports_url(url)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum SourceError {
+    #[error("unsupported URL: {0}")]
     Unsupported(String),
+    #[error("fetch failed: {0}")]
     FetchFailed(String),
+    #[error("parse failed: {0}")]
     ParseFailed(String),
 }
-
-impl std::fmt::Display for SourceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Unsupported(url) => write!(f, "unsupported URL: {}", url),
-            Self::FetchFailed(msg) => write!(f, "fetch failed: {}", msg),
-            Self::ParseFailed(msg) => write!(f, "parse failed: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for SourceError {}

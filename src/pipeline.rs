@@ -49,26 +49,17 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
     .map_err(|_| PipelineError::Timeout)?
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PipelineError {
+    #[error("source error: {0}")]
     Source(String),
+    #[error("textifier error: {0}")]
     Textifier(String),
+    #[error("analyzer error: {0}")]
     Analyzer(String),
+    #[error("提取超时，请增大 --timeout 值")]
     Timeout,
 }
-
-impl std::fmt::Display for PipelineError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Source(msg) => write!(f, "source error: {}", msg),
-            Self::Textifier(msg) => write!(f, "textifier error: {}", msg),
-            Self::Analyzer(msg) => write!(f, "analyzer error: {}", msg),
-            Self::Timeout => write!(f, "提取超时，请增大 --timeout 值"),
-        }
-    }
-}
-
-impl std::error::Error for PipelineError {}
 
 #[cfg(test)]
 mod tests {
