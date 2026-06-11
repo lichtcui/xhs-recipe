@@ -9,8 +9,8 @@ CLI tool to extract structured Chinese recipes from 小红书 (Xiaohongshu / Red
 ## Build & Run
 
 ```bash
-# Build all crates
-cargo build --workspace
+# Build
+cargo build
 
 # Run
 cargo run -- extract <xhs-url>
@@ -35,12 +35,12 @@ Prerequisites: `ffmpeg` (brew install ffmpeg), `yt-dlp` (brew install yt-dlp).
 
 ```
 cargo run -- extract <url>
-  → cli/src/main.rs          # Clap CLI
-  → pipeline/src/lib.rs      # fetch → textify → analyze
-    → sources/src/base.rs    # zendriver-rs browser automation (Rust-native)
-    → textifier/src/lib.rs   # yt-dlp + ffmpeg + whisper-rs transcription
-    → analyzer/src/lib.rs    # reqwest → DeepSeek API (function calling)
-  → presentation/src/        # Terminal render + .md/.json save
+  → src/main.rs                # Clap CLI
+  → src/pipeline.rs            # fetch → textify → analyze
+    → src/sources/base.rs      # zendriver-rs browser automation (Rust-native)
+    → src/textifier.rs         # yt-dlp + ffmpeg + whisper-rs transcription
+    → src/analyzer.rs          # reqwest → DeepSeek API (function calling)
+  → src/presentation/          # Terminal render + .md/.json save
 ```
 
 ## Data Flow
@@ -64,31 +64,37 @@ cargo run -- extract <url>
 ## Test
 
 ```bash
-# Run all 55 tests
-cargo test --workspace
-
-# Run specific crate tests
-cargo test -p core         # 3 tests (models)
-cargo test -p analyzer     # 22 tests (LLM parsing, images, fallback)
-cargo test -p presentation # 6 tests (terminal render, golden file save)
-cargo test -p sources      # 13 tests (URL routing, scraper parsing)
-cargo test -p textifier    # 2 tests (text assembly)
-cargo test -p pipeline     # 2 tests (orchestration)
-cargo test -p cli          # 7 tests (argument parsing)
+# Run all tests
+cargo test                   # 48 lib + 7 bin = 55 tests
+cargo test --lib             # Library tests only
+cargo test --bin xhs-recipe  # Binary (CLI) tests only
 
 # Run with real URL (requires network + API key + cookies)
 cargo run -- extract <xhs-url>
 ```
 
-## Rust Crate Layout
+## Source Layout
+
+Single crate with `src/lib.rs` + `src/main.rs`:
 
 ```
-crates/
-├── core/            # Data models (serde)
-├── presentation/    # Terminal output + file save
-├── analyzer/        # LLM function calling (reqwest)
-├── textifier/       # Video download + audio extraction + whisper-rs transcription
-├── sources/         # Source adapters (multi-platform) with zendriver-rs browser automation
-├── pipeline/        # Orchestration
-└── cli/             # Binary (clap)
+src/
+├── lib.rs                # Library root
+├── main.rs               # Binary (CLI, clap)
+├── models.rs             # Data models (serde)
+├── pipeline.rs           # Orchestration: fetch → textify → analyze
+├── textifier.rs          # yt-dlp + ffmpeg + whisper-rs
+├── analyzer.rs           # LLM function calling (reqwest → DeepSeek)
+├── sources/
+│   ├── mod.rs            # Source routing
+│   ├── base.rs           # zendriver-rs browser automation
+│   └── xiaohongshu/
+│       ├── mod.rs
+│       ├── auth.rs       # Cookie / login
+│       ├── scraper.rs    # Scrape fallback chain
+│       └── url.rs        # URL parsing
+└── presentation/
+    ├── mod.rs
+    ├── render.rs         # Terminal output (colored)
+    └── save.rs           # .md / .json file output
 ```

@@ -95,7 +95,7 @@ mod tests {
 
     fn golden_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/testdata")
+            .join("tests/testdata")
     }
 
     fn load_golden_json() -> Recipe {
