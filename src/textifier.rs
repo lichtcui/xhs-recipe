@@ -222,7 +222,7 @@ async fn transcribe_video(url: &str, asr_model: &str) -> Result<String, Textifie
 
     let video = {
         let d = dir.clone();
-        let u = url.clone();
+        let u = url;
         tokio::task::spawn_blocking(move || download_video(&u, &d)).await
             .map_err(|e| TextifierError::DownloadFailed(format!("task: {}", e)))?
             .map_err(|e| { println!("  ✗ 视频下载失败: {}", e); e })?
@@ -230,9 +230,8 @@ async fn transcribe_video(url: &str, asr_model: &str) -> Result<String, Textifie
     let video = match video { Some(v) => v, None => return Ok(String::new()) };
 
     let audio = {
-        let v = video.clone();
         let d = dir.clone();
-        tokio::task::spawn_blocking(move || extract_audio(&v, &d)).await
+        tokio::task::spawn_blocking(move || extract_audio(&video, &d)).await
             .map_err(|e| TextifierError::TranscriptionFailed(format!("task: {}", e)))?
             .map_err(|e| { println!("  ✗ 音频提取失败: {}", e); e })?
     };

@@ -114,10 +114,10 @@ async fn extract_data(
             return Ok(parsed);
         }
     }
-    let dom_js = r#"(()=>{const r={title:'',description:'',images:[],hasVideo:false};const og=document.querySelector('meta[property="og:title"]');if(og)r.title=og.getAttribute('content')||'';const od=document.querySelector('meta[property="og:description"]');if(od)r.description=od.getAttribute('content')||'';if(!r.title){for(const s of['#detail-title','.title','h1.title','[class*="title"]']){const e=document.querySelector(s);if(e&&e.innerText){r.title=e.innerText.trim();break;}}}const seen=new Set();for(const s of['.swiper-slide img','.carousel img','.note-image img']){document.querySelectorAll(s).forEach(i=>{const src=i.getAttribute('src')||i.getAttribute('data-src')||'';if(src&&src.includes('http')&&!seen.has(src)){r.images.push(src);seen.add(src);}});}r.hasVideo=!!document.querySelector('video');return JSON.stringify(r);})()"#;
+    const DOM_EXTRACT_JS: &str = r#"(()=>{const r={title:'',description:'',images:[],hasVideo:false};const og=document.querySelector('meta[property="og:title"]');if(og)r.title=og.getAttribute('content')||'';const od=document.querySelector('meta[property="og:description"]');if(od)r.description=od.getAttribute('content')||'';if(!r.title){for(const s of['#detail-title','.title','h1.title','[class*="title"]']){const e=document.querySelector(s);if(e&&e.innerText){r.title=e.innerText.trim();break;}}}const seen=new Set();for(const s of['.swiper-slide img','.carousel img','.note-image img']){document.querySelectorAll(s).forEach(i=>{const src=i.getAttribute('src')||i.getAttribute('data-src')||'';if(src&&src.includes('http')&&!seen.has(src)){r.images.push(src);seen.add(src);}});}r.hasVideo=!!document.querySelector('video');return JSON.stringify(r);})()"#;
 
     let dom_json: String = tab
-        .evaluate_main(dom_js)
+        .evaluate_main(DOM_EXTRACT_JS)
         .await
         .map_err(|e| SourceError::FetchFailed(format!("DOM extract: {}", e)))?;
 

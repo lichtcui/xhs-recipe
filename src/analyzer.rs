@@ -1,5 +1,6 @@
 use crate::models::{Ingredient, Recipe, Step};
 use serde_json::{json, Value};
+use std::sync::OnceLock;
 
 /// Extract a structured recipe from text + optional images using LLM function calling.
 pub async fn extract_recipe(
@@ -90,7 +91,7 @@ pub async fn extract_recipe(
         "tool_choice": "required",
     });
 
-    let client = reqwest::Client::new();
+    let client = shared_client();
     let response = client
         .post(format!("{}/chat/completions", base_url))
         .header("Authorization", format!("Bearer {}", api_key))
@@ -194,12 +195,18 @@ async fn build_message_content(text: &str, image_urls: &[String]) -> Vec<Value> 
     content
 }
 
+fn shared_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| reqwest::Client::new())
+}
+
 async fn download_image(url: &str) -> Option<Vec<u8>> {
-    let client = reqwest::Client::builder()
+    let resp = shared_client()
+        .get(url)
         .timeout(std::time::Duration::from_secs(15))
-        .build()
+        .send()
+        .await
         .ok()?;
-    let resp = client.get(url).send().await.ok()?;
     if !resp.status().is_success() {
         return None;
     }
