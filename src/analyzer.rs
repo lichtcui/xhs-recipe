@@ -197,7 +197,7 @@ fn resolve_api_key() -> Result<String, AnalyzerError> {
                 "-a",
                 &std::env::var("USER").unwrap_or_default(),
                 "-s",
-                "deepseek-api",
+                "DEEPSEEK_API_KEY",
                 "-w",
             ])
             .output()
@@ -217,7 +217,7 @@ fn platform_api_key_hint() -> &'static str {
     if cfg!(target_os = "macos") {
         "未设置 DEEPSEEK_API_KEY。请通过以下方式之一配置：\n\
          1. 设置环境变量：export DEEPSEEK_API_KEY=sk-...\n\
-         2. 存入 macOS 钥匙串：security add-generic-password -a \"$USER\" -s deepseek-api -w \"sk-...\""
+         2. 存入 macOS 钥匙串：security add-generic-password -a \"$USER\" -s DEEPSEEK_API_KEY -w \"sk-...\""
     } else if cfg!(target_os = "windows") {
         "未设置 DEEPSEEK_API_KEY。请通过以下方式配置：\n\
          1. 设置环境变量：set DEEPSEEK_API_KEY=sk-...\n\

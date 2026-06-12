@@ -41,10 +41,36 @@ cargo build
 
 ## 配置
 
-在 `.env` 文件或环境变量中设置 `DEEPSEEK_API_KEY`：
+需要 DeepSeek API key。按以下 **任意一种方式** 配置 `DEEPSEEK_API_KEY`：
+
+### 方式 1：环境变量
+
+```bash
+export DEEPSEEK_API_KEY=sk-your-key
+```
+
+或写入 `.env` 文件（工具会自动加载）：
 
 ```bash
 echo "DEEPSEEK_API_KEY=sk-your-key" > .env
+```
+
+### 方式 2：macOS 钥匙串（推荐）
+
+存入钥匙串后无需每次设置环境变量：
+
+```bash
+# 添加
+security add-generic-password -a "$USER" -s DEEPSEEK_API_KEY -w "sk-your-key"
+
+# 更新（-U 覆盖已有条目）
+security add-generic-password -a "$USER" -s DEEPSEEK_API_KEY -w "sk-new-key" -U
+
+# 查看已保存的 key（仅输出最后 4 位）
+security find-generic-password -s DEEPSEEK_API_KEY -w | sed 's/.*\(.\{4\}\)$/****\1/'
+
+# 删除
+security delete-generic-password -s DEEPSEEK_API_KEY
 ```
 
 ## 使用方法
