@@ -6,12 +6,16 @@
 
 - 抓取小红书食谱帖子的文字和图片
 - 使用 Qwen3-ASR 将视频音频转写为文字
+- 视频画面文字识别（macOS Vision 框架 OCR）
+- 图文笔记图片文字识别（macOS Vision 框架 OCR）
 - 通过 DeepSeek LLM 提取结构化食谱数据（食材、步骤、小贴士）
+- 合集多菜谱自动分批提取
 - 输出到终端（彩色）、Markdown 或 JSON
 
 ## 前置依赖
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) — `brew install yt-dlp`
+- [ffmpeg](https://ffmpeg.org/) — `brew install ffmpeg`
 - [Qwen3-ASR](https://github.com/Qwen/Qwen3-ASR)（用于视频转写）：
   ```bash
   cargo install qwen-asr-cli
@@ -52,11 +56,17 @@ cargo run -- extract <xhs-url>
 # 保存为 Markdown 文件
 cargo run -- extract <xhs-url> -o recipe.md
 
-# 不发送图片给 LLM
+# 跳过图片 OCR
 cargo run -- extract <xhs-url> --no-images
 
 # 使用更高精度的 ASR 模型
 cargo run -- extract <xhs-url> --asr-model qwen3-asr-1.7b
+
+# 指定 LLM 模型
+cargo run -- extract <xhs-url> --model deepseek-chat
+
+# 设置超时时间（秒）
+cargo run -- extract <xhs-url> --timeout 600
 ```
 
 ### 本地存储管理
@@ -82,6 +92,9 @@ cargo run -- logout
 
 # 检查依赖
 cargo run -- setup
+
+# 安全审计
+cargo audit
 ```
 
 ## 工作原理
@@ -91,9 +104,10 @@ URL → Source Adapter → Textifier → Analyzer → Presentation
 ```
 
 1. **Source Adapter** — 浏览器自动化抓取小红书页面，提取文字和图片
-2. **Textifier** — 通过 yt-dlp 下载视频，symphonia（纯 Rust）提取音频，使用 Qwen3-ASR 转写
-3. **Analyzer** — 将文字（和可选图片）发送给 DeepSeek API，通过 function calling 返回结构化 `Recipe`
-4. **Presentation** — 渲染到终端、Markdown 或 JSON
+2. **Textifier** — 视频 → yt-dlp + symphonia + Qwen3-ASR 转写 + ffmpeg + macOS Vision 帧 OCR；图文笔记 → macOS Vision OCR
+3. **Analyzer** — OCR 文字 → DeepSeek API function calling → `Recipe` 模型
+4. **Storage** — 自动保存到 `~/.xhs-recipe/recipes/`，同一 URL 重复提取自动去重
+5. **Presentation** — 渲染到终端、Markdown 或 JSON
 
 ## 项目结构
 
@@ -103,25 +117,29 @@ src/
 ├── lib.rs                # 库根模块
 ├── models.rs             # 数据模型（serde）
 ├── pipeline.rs           # 编排：fetch → textify → analyze
-├── textifier.rs          # yt-dlp + symphonia + ASR
-├── analyzer.rs           # LLM function calling
+├── textifier.rs          # yt-dlp + symphonia + Qwen3-ASR + macOS Vision OCR
+├── analyzer.rs           # LLM function calling (DeepSeek)
 ├── sources/
-│   ├── xiaohongshu/      # 小红书适配器
-│   │   ├── auth.rs       # Cookie / 登录
-│   │   ├── scraper.rs    # 抓取降级策略
-│   │   └── url.rs        # URL 解析
-│   └── ...
+│   ├── base.rs           # URL 路由 & 域检查
+│   └── xiaohongshu/      # 小红书适配器
+│       ├── auth.rs       # Cookie / 登录
+│       ├── scraper.rs    # 抓取降级策略 (zendriver + HTTP)
+│       └── url.rs        # URL 解析
+├── storage/
+│   ├── mod.rs            # Storage trait
+│   └── local.rs          # 本地文件存储 ~/.xhs-recipe/recipes/
 └── presentation/
-    ├── render.rs         # 终端输出
+    ├── render.rs         # 终端输出 (彩色)
     └── save.rs           # .md / .json 保存
 ```
 
 ## 测试
 
 ```bash
-cargo test
+cargo test                   # 78 lib + 11 bin + 4 integration = 93 tests
 cargo test --lib             # 仅库测试
 cargo test --bin xhs-recipe  # 仅 CLI 测试
+cargo audit                  # 安全审计（安装: cargo install cargo-audit）
 ```
 
 ## 许可证

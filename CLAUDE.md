@@ -15,7 +15,7 @@ cargo build
 # Run with Qwen3-ASR transcription
 cargo run -- extract <xhs-url>
 cargo run -- extract <xhs-url> -o recipe.md           # save to file
-cargo run -- extract <xhs-url> --no-images             # no images sent to LLM
+cargo run -- extract <xhs-url> --no-images             # skip image OCR
 cargo run -- extract <xhs-url> --asr-model qwen3-asr-1.7b  # higher accuracy model
 
 # Local storage (auto-saved after each extract)
@@ -45,7 +45,7 @@ cargo audit
 cargo run -- setup
 ```
 
-Prerequisites: `yt-dlp` (brew install yt-dlp), `ffmpeg` (brew install ffmpeg), Xcode Command Line Tools (`swiftc` for macOS Vision OCR).
+Prerequisites: `yt-dlp` (brew install yt-dlp), `ffmpeg` (brew install ffmpeg), Xcode Command Line Tools (`swiftc` for macOS Vision OCR, `ffmpeg` for video frame extraction).
 
 ## Architecture
 
@@ -68,7 +68,7 @@ cargo run -- extract <url>
 2. **`pipeline.extract()`** 接收 URL，调用 `sources.fetch(url)` 路由到对应适配器
 3. **Source Adapter**（如 `sources/xiaohongshu/`）：zendriver-rs 浏览器自动化抓取页面，返回平台无关的 `RawContent`
 4. **`textifier.process()`**：视频 → yt-dlp + symphonia + Qwen3-ASR 转写 + ffmpeg + macOS Vision 帧 OCR，返回 `TextContent`
-5. **`analyzer::extract_recipe()`**：纯文本 + 可选图片 → LLM function calling → `Recipe` 模型
+5. **`analyzer::extract_recipe()`**：OCR 文本 + 描述文字 → LLM function calling → `Recipe` 模型
 6. **`storage`**：提取后自动保存到 `~/.xhs-recipe/recipes/`。同一 URL 重复提取时自动去重，跳过保存
 7. **`presentation`**：终端 rich 渲染 / 保存 `.md` 或 `.json`
 
@@ -80,8 +80,8 @@ cargo run -- extract <url>
 - **Video download**：yt-dlp 子进程下载，symphonia（纯 Rust）提取音频 → Qwen3-ASR 转写
 - **Video OCR**：ffmpeg 提取关键帧 → macOS Vision 框架（VNRecognizeTextRequest）识别画面中文字
 - **ASR + OCR 并行**：下载视频后，音频转写与帧 OCR 同时执行，结果合并后送入 LLM
-- **Image selection**：仅发送最多 3 张图片给 LLM（`--images`/`--no-images` 控制）
-- **Fallback chain for scraping**：`__NEXT_DATA__` → DOM selectors → API response interception
+- **Image OCR**：`send_images` 控制是否为图文笔记执行 OCR；图片在 textifier 阶段 OCR 为文字后送入 LLM，而非直接发送图片
+- **Fallback chain for scraping**：zendriver（`__NEXT_DATA__` → DOM selectors）→ reqwest HTTP fallback（`__NEXT_DATA__` → og:meta）
 - **CLI uses clap** for argument parsing
 - **Dedup & cache**：同一 URL 重复提取时先查本地缓存，命中则跳过 pipeline 直接显示；`save()` 自动去重不产生重复条目
 
@@ -89,7 +89,7 @@ cargo run -- extract <url>
 
 ```bash
 # Run all tests
-cargo test                   # 11 bin + 4 integration = 15 tests
+cargo test                   # 78 lib + 11 bin + 4 integration = 93 tests
 cargo audit                  # Security audit (install: cargo install cargo-audit)
 cargo test --lib             # Library tests only
 cargo test --bin xhs-recipe  # Binary (CLI) tests only
