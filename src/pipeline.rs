@@ -22,6 +22,16 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
         crate::vprintln!("  ✓ 标题: {}", raw.title);
         let note_type = if raw.has_video { "视频笔记" } else { "图文笔记" };
         crate::vprintln!("  ✓ 类型: {} | 图片: {} 张", note_type, raw.image_urls.len());
+        if !raw.image_urls.is_empty() {
+            for (i, url) in raw.image_urls.iter().enumerate() {
+                let truncated = if url.len() > 60 {
+                    format!("{}...", &url[..60])
+                } else {
+                    url.clone()
+                };
+                crate::vprintln!("      图片[{}]: {}", i, truncated);
+            }
+        }
 
         // Step 2: Textify
         let text = crate::textifier::process(&raw, opts.asr_model).await?;

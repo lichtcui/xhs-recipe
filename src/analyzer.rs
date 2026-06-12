@@ -98,11 +98,23 @@ pub async fn extract_recipe(
 
     let base_url = "https://api.deepseek.com";
 
-    let msg_content = build_message_content(client, text, image_urls).await;
+    // Only send images if the model supports vision (e.g. deepseek-chat does not)
+    let effective_images: &[String] = if !image_urls.is_empty() && !model_supports_vision(model) {
+        crate::vprintln!(
+            "  ⚠ 模型 {} 不支持图片分析，已跳过 {} 张图片",
+            model,
+            image_urls.len()
+        );
+        &[]
+    } else {
+        image_urls
+    };
+
+    let msg_content = build_message_content(client, text, effective_images).await;
 
     let model_label = model;
-    let img_count = if !image_urls.is_empty() {
-        format!(" | 图片: {}", image_urls.len().min(3))
+    let img_count = if !effective_images.is_empty() {
+        format!(" | 图片: {}", effective_images.len().min(3))
     } else {
         String::new()
     };
@@ -261,6 +273,16 @@ const SYSTEM_PROMPT: &str = r#"你是专业厨师和食谱分析师。你擅长�
 - 用量单位保持原文（如克、毫升、勺、碗等）"#;
 
 // ── Image Handling ─────────────────────────────────────────────────
+
+/// Check whether a model name supports `image_url` content in messages.
+/// DeepSeek chat models (`deepseek-chat`) do not; vision-specific models do.
+fn model_supports_vision(model: &str) -> bool {
+    let m = model.to_lowercase();
+    if m.starts_with("deepseek-") && !m.contains("vl") && !m.contains("vision") {
+        return false;
+    }
+    true
+}
 
 async fn build_message_content(client: &impl HttpClient, text: &str, image_urls: &[String]) -> Vec<Value> {
     let mut content: Vec<Value> = vec![json!({"type": "text", "text": text})];
