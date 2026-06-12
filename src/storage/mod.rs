@@ -34,6 +34,8 @@ pub trait Storage: Send + Sync {
     async fn list(&self) -> Result<Vec<RecipeSummary>, StorageError>;
     /// Get a single recipe by ID.
     async fn get(&self, id: &str) -> Result<Recipe, StorageError>;
+    /// Find a recipe by its source URL, if present.
+    async fn get_by_source_url(&self, source_url: &str) -> Result<Option<Recipe>, StorageError>;
     /// Delete a recipe by ID.
     async fn delete(&self, id: &str) -> Result<(), StorageError>;
 }

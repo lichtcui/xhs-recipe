@@ -62,7 +62,7 @@ fn now_secs() -> u64 {
 
 impl LocalStorage {
     /// Scan all stored recipes and return the ID of one matching `source_url`, if any.
-    async fn find_by_source_url(&self, source_url: &str) -> Result<Option<String>, StorageError> {
+    async fn find_id_by_source_url(&self, source_url: &str) -> Result<Option<String>, StorageError> {
         let mut dir = match tokio::fs::read_dir(&self.dir).await {
             Ok(d) => d,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -93,8 +93,8 @@ impl LocalStorage {
 impl Storage for LocalStorage {
     async fn save(&self, recipe: &Recipe) -> Result<String, StorageError> {
         // Dedup: skip if a recipe with the same source_url already exists.
-        if let Some(existing) = self.find_by_source_url(&recipe.source_url).await? {
-            return Ok(existing);
+        if let Some(id) = self.find_id_by_source_url(&recipe.source_url).await? {
+            return Ok(id);
         }
 
         let id = generate_id(&recipe.source_url);
@@ -149,6 +149,14 @@ impl Storage for LocalStorage {
             })?;
         let stored: StoredRecipe = serde_json::from_str(&data)?;
         Ok(stored.recipe)
+    }
+
+    async fn get_by_source_url(&self, source_url: &str) -> Result<Option<Recipe>, StorageError> {
+        let id = match self.find_id_by_source_url(source_url).await? {
+            Some(id) => id,
+            None => return Ok(None),
+        };
+        self.get(&id).await.map(Some)
     }
 
     async fn delete(&self, id: &str) -> Result<(), StorageError> {

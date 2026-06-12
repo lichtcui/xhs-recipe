@@ -68,9 +68,24 @@ fn main() {
 }
 
 fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_model: &str, images: bool, timeout: u64) {
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
+
+    // Check cache first
+    let store = LocalStorage::default();
+    match rt.block_on(store.get_by_source_url(url)) {
+        Ok(Some(recipe)) => {
+            xhs_recipe::vprintln!("✓ 命中缓存，直接显示已保存的菜谱\n");
+            xhs_recipe::presentation::render::render_terminal(&recipe);
+            return;
+        }
+        Ok(None) => { /* cache miss, continue to pipeline */ }
+        Err(e) => {
+            xhs_recipe::vprintln!("⚠ 读取本地缓存失败: {}（将继续提取）", e);
+        }
+    }
+
     xhs_recipe::vprintln!("\n🔍 正在处理: {}", url);
 
-    let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
     let opts = xhs_recipe::pipeline::ExtractOptions {
         url,
         asr_model,
@@ -85,7 +100,6 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_mod
             xhs_recipe::presentation::render::render_terminal(&recipe);
 
             // Auto-save to local storage
-            let store = LocalStorage::default();
             match rt.block_on(store.save(&recipe)) {
                 Ok(id) => {
                     let short = &id[..12];
