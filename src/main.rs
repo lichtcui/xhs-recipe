@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
+use xhs_recipe::storage::{local::LocalStorage, Storage};
 
 #[derive(Parser)]
 #[command(name = "xhs-recipe", version = env!("CARGO_PKG_VERSION"), about = "从社交媒体链接提取菜谱的 CLI 工具")]
@@ -38,6 +39,15 @@ enum Command {
     },
     /// 清除已保存的 Cookie
     Logout,
+    /// 列出本地已保存的菜谱
+    List {
+        #[arg(short, long, help = "Show all fields including IDs")]
+        verbose: bool,
+    },
+    /// 查看本地已保存的菜谱详情
+    Show {
+        id: String,
+    },
 }
 
 fn main() {
@@ -52,6 +62,8 @@ fn main() {
         Command::Setup => run_setup(),
         Command::Login { headless, timeout } => run_login(headless, timeout),
         Command::Logout => run_logout(),
+        Command::List { verbose } => run_list(verbose),
+        Command::Show { id } => run_show(&id),
     }
 }
 
@@ -71,6 +83,19 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_mod
     match rt.block_on(xhs_recipe::pipeline::extract(opts)) {
         Ok(recipe) => {
             xhs_recipe::presentation::render::render_terminal(&recipe);
+
+            // Auto-save to local storage
+            let store = LocalStorage::default();
+            match rt.block_on(store.save(&recipe)) {
+                Ok(id) => {
+                    let short = &id[..12];
+                    println!("\n✓ 已保存到本地 ({}...)。运行 `xhs-recipe show {}...` 查看", short, short);
+                }
+                Err(e) => {
+                    eprintln!("⚠ 本地保存失败: {}（已跳过）", e);
+                }
+            }
+
             if let Some(path) = output {
                 if let Err(e) = xhs_recipe::presentation::save::save_to_file(&recipe, path) {
                     eprintln!("保存失败: {}", e);
@@ -184,6 +209,59 @@ fn run_logout() {
     rt.block_on(xhs_recipe::sources::xiaohongshu::auth::logout());
 }
 
+/// 从 URL 提取菜谱并显示/保存
+fn run_list(verbose: bool) {
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
+    let store = LocalStorage::default();
+
+    match rt.block_on(store.list()) {
+        Ok(recipes) => {
+            if recipes.is_empty() {
+                println!("暂无已保存的菜谱。运行 `xhs-recipe extract <url>` 提取第一个菜谱。");
+                return;
+            }
+
+            println!("已保存的菜谱 ({}):\n", recipes.len());
+            let mut table = Vec::new();
+            for r in &recipes {
+                let short = &r.id[..12];
+                let time = xhs_recipe::storage::local::relative_time(r.saved_at);
+                let name = &r.name;
+                if verbose {
+                    table.push(format!("  {}...  {}  {}  {}", short, name, time, r.source_url));
+                } else {
+                    table.push(format!("  {}...  {}  {}", short, name, time));
+                }
+            }
+            println!("{}", table.join("\n"));
+            println!("\n运行 `xhs-recipe show <id>` 查看详情");
+        }
+        Err(e) => {
+            eprintln!("读取本地存储失败: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_show(id: &str) {
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
+    let store = LocalStorage::default();
+
+    match rt.block_on(store.get(id)) {
+        Ok(recipe) => {
+            xhs_recipe::presentation::render::render_terminal(&recipe);
+        }
+        Err(xhs_recipe::storage::StorageError::NotFound { .. }) => {
+            eprintln!("未找到菜谱: {}\n运行 `xhs-recipe list` 查看所有已保存的菜谱。", id);
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("读取失败: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 fn which(name: &str) -> Option<String> {
@@ -288,5 +366,29 @@ mod tests {
     fn test_cli_logout() {
         let cli = Cli::try_parse_from(["xhs-recipe", "logout"]).unwrap();
         assert!(matches!(cli.command, Command::Logout));
+    }
+
+    #[test]
+    fn test_cli_list() {
+        let cli = Cli::try_parse_from(["xhs-recipe", "list"]).unwrap();
+        assert!(matches!(cli.command, Command::List { .. }));
+    }
+
+    #[test]
+    fn test_cli_list_verbose() {
+        let cli = Cli::try_parse_from(["xhs-recipe", "list", "--verbose"]).unwrap();
+        match cli.command {
+            Command::List { verbose } => assert!(verbose),
+            _ => panic!("expected List"),
+        }
+    }
+
+    #[test]
+    fn test_cli_show() {
+        let cli = Cli::try_parse_from(["xhs-recipe", "show", "abc123"]).unwrap();
+        match cli.command {
+            Command::Show { id } => assert_eq!(id, "abc123"),
+            _ => panic!("expected Show"),
+        }
     }
 }

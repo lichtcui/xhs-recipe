@@ -6,6 +6,7 @@ pub mod sources;
 pub mod textifier;
 pub mod analyzer;
 pub mod presentation;
+pub mod storage;
 
 /// Global verbose flag, set by CLI parser.
 pub static VERBOSE: AtomicBool = AtomicBool::new(false);

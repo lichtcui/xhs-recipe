@@ -18,6 +18,10 @@ cargo run -- extract <xhs-url> -o recipe.md           # save to file
 cargo run -- extract <xhs-url> --no-images             # no images sent to LLM
 cargo run -- extract <xhs-url> --asr-model qwen3-asr-1.7b  # higher accuracy model
 
+# Local storage (auto-saved after each extract)
+cargo run -- list                  # list saved recipes
+cargo run -- show <id>             # view a saved recipe
+
 # Install Qwen3-ASR (required for transcription)
 cargo install qwen-asr-cli
 qwen-asr download qwen3-asr-0.6b
@@ -52,6 +56,7 @@ cargo run -- extract <url>
     → src/textifier.rs         # yt-dlp + ffmpeg + Qwen3-ASR transcription
     → src/analyzer.rs          # reqwest → DeepSeek API (function calling)
   → src/presentation/          # Terminal render + .md/.json save
+  → src/storage/               # Auto-save to ~/.xhs-recipe/recipes/
 ```
 
 ## Data Flow
@@ -60,7 +65,8 @@ cargo run -- extract <url>
 2. **Source Adapter**（如 `sources/xiaohongshu/`）：zendriver-rs 浏览器自动化抓取页面，返回平台无关的 `RawContent`
 3. **`textifier.process()`**：视频 → yt-dlp + ffmpeg + Qwen3-ASR 转写，返回 `TextContent`
 4. **`analyzer::extract_recipe()`**：纯文本 + 可选图片 → LLM function calling → `Recipe` 模型
-5. **`presentation`**：终端 rich 渲染 / 保存 `.md` 或 `.json`
+5. **`storage`**：提取后自动保存到 `~/.xhs-recipe/recipes/`（`Storage` trait，未来可替换为数据库）
+6. **`presentation`**：终端 rich 渲染 / 保存 `.md` 或 `.json`
 
 ## Key Design Decisions
 
@@ -76,7 +82,7 @@ cargo run -- extract <url>
 
 ```bash
 # Run all tests
-cargo test                   # 70 lib + 8 bin + 4 integration = 82 tests
+cargo test                   # 78 lib + 11 bin + 4 integration = 93 tests
 cargo test --lib             # Library tests only
 cargo test --bin xhs-recipe  # Binary (CLI) tests only
 
@@ -104,6 +110,9 @@ src/
 │       ├── auth.rs       # Cookie / login
 │       ├── scraper.rs    # Scrape fallback chain
 │       └── url.rs        # URL parsing
+├── storage/
+│   ├── mod.rs            # Storage trait (save/list/get/delete)
+│   └── local.rs          # LocalStorage: ~/.xhs-recipe/recipes/*.json
 └── presentation/
     ├── mod.rs
     ├── render.rs         # Terminal output (colored)
