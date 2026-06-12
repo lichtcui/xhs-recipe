@@ -42,7 +42,7 @@ cargo run -- logout
 cargo run -- setup
 ```
 
-Prerequisites: `yt-dlp` (brew install yt-dlp).
+Prerequisites: `yt-dlp` (brew install yt-dlp), `ffmpeg` (brew install ffmpeg), Xcode Command Line Tools (`swiftc` for macOS Vision OCR).
 
 ## Architecture
 
@@ -53,7 +53,7 @@ cargo run -- extract <url>
   → src/main.rs                # Clap CLI
   → src/pipeline.rs            # fetch → textify → analyze
     → src/sources/base.rs      # URL routing → xiaohongshu adapter
-    → src/textifier.rs         # yt-dlp + symphonia + Qwen3-ASR transcription
+    → src/textifier.rs         # yt-dlp + symphonia + Qwen3-ASR + macOS Vision OCR
     → src/analyzer.rs          # reqwest → DeepSeek API (function calling)
   → src/presentation/          # Terminal render + .md/.json save
   → src/storage/               # Auto-save to ~/.xhs-recipe/recipes/
@@ -64,7 +64,7 @@ cargo run -- extract <url>
 1. **`main.rs`** 先查本地缓存（`Storage::get_by_source_url`），命中则直接显示并跳过后续步骤
 2. **`pipeline.extract()`** 接收 URL，调用 `sources.fetch(url)` 路由到对应适配器
 3. **Source Adapter**（如 `sources/xiaohongshu/`）：zendriver-rs 浏览器自动化抓取页面，返回平台无关的 `RawContent`
-4. **`textifier.process()`**：视频 → yt-dlp + symphonia + Qwen3-ASR 转写，返回 `TextContent`
+4. **`textifier.process()`**：视频 → yt-dlp + symphonia + Qwen3-ASR 转写 + ffmpeg + macOS Vision 帧 OCR，返回 `TextContent`
 5. **`analyzer::extract_recipe()`**：纯文本 + 可选图片 → LLM function calling → `Recipe` 模型
 6. **`storage`**：提取后自动保存到 `~/.xhs-recipe/recipes/`。同一 URL 重复提取时自动去重，跳过保存
 7. **`presentation`**：终端 rich 渲染 / 保存 `.md` 或 `.json`
@@ -75,6 +75,8 @@ cargo run -- extract <url>
 - **RawContent（平台无关）**：各 Source Adapter 统一输出 `RawContent`，新增来源只需新写 adapter
 - **Cookie auth**：zendriver-rs 管理浏览器 cookie
 - **Video download**：yt-dlp 子进程下载，symphonia（纯 Rust）提取音频 → Qwen3-ASR 转写
+- **Video OCR**：ffmpeg 提取关键帧 → macOS Vision 框架（VNRecognizeTextRequest）识别画面中文字
+- **ASR + OCR 并行**：下载视频后，音频转写与帧 OCR 同时执行，结果合并后送入 LLM
 - **Image selection**：仅发送最多 3 张图片给 LLM（`--images`/`--no-images` 控制）
 - **Fallback chain for scraping**：`__NEXT_DATA__` → DOM selectors → API response interception
 - **CLI uses clap** for argument parsing
@@ -84,7 +86,7 @@ cargo run -- extract <url>
 
 ```bash
 # Run all tests
-cargo test                   # 79 lib + 11 bin + 4 integration = 94 tests
+cargo test                   # 80 lib + 11 bin + 4 integration = 95 tests
 cargo test --lib             # Library tests only
 cargo test --bin xhs-recipe  # Binary (CLI) tests only
 
@@ -102,7 +104,7 @@ src/
 ├── main.rs               # Binary (CLI, clap)
 ├── models.rs             # Data models (serde)
 ├── pipeline.rs           # Orchestration: fetch → textify → analyze
-├── textifier.rs          # yt-dlp + symphonia + Qwen3-ASR
+├── textifier.rs          # yt-dlp + symphonia + Qwen3-ASR + macOS Vision OCR
 ├── analyzer.rs           # LLM function calling (reqwest → DeepSeek)
 ├── sources/
 │   ├── mod.rs            # Source routing
