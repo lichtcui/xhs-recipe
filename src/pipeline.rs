@@ -1,4 +1,5 @@
 use crate::models::Recipe;
+use crate::models::TextContent;
 use crate::sources::SourceError;
 use crate::textifier::TextifierError;
 use crate::analyzer::AnalyzerError;
@@ -11,6 +12,75 @@ pub struct ExtractOptions<'a> {
     pub send_images: bool,
     pub api_key: Option<&'a str>,
     pub timeout_secs: u64,
+}
+
+/// Try to detect collection post count from title (e.g., "11道", "10款", "5种").
+fn detect_collection_count(title: &str) -> Option<usize> {
+    let re = regex::Regex::new(r"(\d+)\s*[道款式个]").ok()?;
+    let cap = re.captures(title)?;
+    cap[1].parse::<usize>().ok()
+}
+
+/// Process a collection post by batching per-image OCR texts into separate LLM calls.
+/// Each batch contains at most BATCH_SIZE images, ensuring the output fits within token limits.
+async fn extract_collection(
+    client: &impl crate::analyzer::HttpClient,
+    text: &TextContent,
+    total: usize,
+    model: &str,
+    api_key: Option<&str>,
+) -> Result<Vec<Recipe>, PipelineError> {
+    const BATCH_SIZE: usize = 4;
+
+    if text.image_texts.is_empty() {
+        // Fallback: no per-image OCR data, use combined text in a single call
+        return crate::analyzer::extract_recipe(client, &text.full_text, &[], model, api_key).await
+            .map_err(PipelineError::from);
+    }
+
+    // Build batch texts from per-image OCR results
+    let mut batches: Vec<String> = Vec::new();
+    for (chunk_idx, chunk) in text.image_texts.chunks(BATCH_SIZE).enumerate() {
+        let batch_start = chunk_idx * BATCH_SIZE;
+        let mut batch = format!("标题：{}\n\n本批包含图片 {}-{}（共 {} 张图，每张图一个菜谱）：", text.title,
+            batch_start + 1, batch_start + chunk.len(), total);
+        for (local_idx, img_text) in chunk.iter().enumerate() {
+            let img_num = batch_start + local_idx + 1;
+            batch.push_str(&format!("\n\n---图片 {}---\n", img_num));
+            if img_text.is_empty() {
+                batch.push_str("（图片中未识别出文字）");
+            } else {
+                batch.push_str(img_text);
+            }
+        }
+        batches.push(batch);
+    }
+
+    // Launch all batch calls in parallel
+    let mut handles = Vec::new();
+    for batch_text in batches {
+        let model = model.to_string();
+        let key = api_key.map(|s| s.to_string());
+        handles.push(tokio::spawn(async move {
+            crate::analyzer::extract_recipe(
+                crate::analyzer::shared_client(),
+                &batch_text,
+                &[],
+                &model,
+                key.as_deref(),
+            ).await
+        }));
+    }
+
+    // Collect results in order (preserving batch order = image order)
+    let mut all_recipes = Vec::new();
+    for handle in handles {
+        let result = handle.await
+            .map_err(|e| PipelineError::Analyzer(AnalyzerError::ApiError(format!("task failed: {}", e))))?;
+        all_recipes.extend(result?);
+    }
+
+    Ok(all_recipes)
 }
 
 /// Run the full extraction pipeline: fetch → textify → analyze.
@@ -38,14 +108,37 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Vec<Recipe>, PipelineEr
         let text = crate::textifier::process(&raw, opts.asr_model, opts.send_images).await?;
 
         // Step 3: Analyze (images already OCR'd into text, no need to pass separately)
-        let mut recipes = crate::analyzer::extract_recipe(
-            crate::analyzer::shared_client(),
-            &text.full_text,
-            &[],  // images are already OCR'd into text_content
-            opts.llm_model,
-            opts.api_key,
-        )
-        .await?;
+        let mut recipes = if opts.send_images && !raw.has_video && !text.image_texts.is_empty() {
+            // Check if this is a collection post (title has count like "11道")
+            let count = detect_collection_count(&text.title);
+            let total = count.unwrap_or(text.image_texts.len());
+            if count.is_some() && total > 1 {
+                println!("  📦 检测到合集 (共{}道菜)，分批处理...", total);
+                extract_collection(
+                    crate::analyzer::shared_client(),
+                    &text,
+                    total,
+                    opts.llm_model,
+                    opts.api_key,
+                ).await?
+            } else {
+                crate::analyzer::extract_recipe(
+                    crate::analyzer::shared_client(),
+                    &text.full_text,
+                    &[],
+                    opts.llm_model,
+                    opts.api_key,
+                ).await?
+            }
+        } else {
+            crate::analyzer::extract_recipe(
+                crate::analyzer::shared_client(),
+                &text.full_text,
+                &[],
+                opts.llm_model,
+                opts.api_key,
+            ).await?
+        };
 
         // Set source_url on every recipe
         for recipe in &mut recipes {

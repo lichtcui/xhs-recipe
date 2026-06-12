@@ -18,6 +18,9 @@ pub struct RawContent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextContent {
     pub full_text: String,
+    /// Per-image OCR texts (empty for video posts). Used for batching collection extracts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub image_texts: Vec<String>,
     pub title: String,
     pub source: String,
     pub source_url: String,

@@ -73,6 +73,7 @@ pub async fn extract_recipe(
 
     // Images are OCR'd into text_content at the textifier stage, not sent to LLM directly.
     println!("  → 发送给 {} 分析... ({} 字, {} 字节)", model, text.chars().count(), text.len());
+    crate::vprintln!("  ⚠ 完整内容:\n{}", text);
     let msg_content = vec![json!({"type": "text", "text": text})];
 
     // ── Recipe item schema (shared by single and multi output) ────
@@ -126,7 +127,7 @@ pub async fn extract_recipe(
 
     let request_body = json!({
         "model": model,
-        "max_tokens": 4096,
+        "max_tokens": 8192,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": msg_content},
@@ -272,6 +273,13 @@ fn parse_response(response: Value) -> Result<Vec<Recipe>, AnalyzerError> {
                     let args = tc["function"]["arguments"]
                         .as_str()
                         .ok_or_else(|| AnalyzerError::ParseError("missing arguments".into()))?;
+                    // Diagnostic: show finish_reason and raw count
+                    if let Some(reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
+                        crate::vprintln!("  ⚠ finish_reason: {}", reason);
+                    }
+                    crate::vprintln!("  ⚠ 原始参数长度: {} 字符, {} 字节", args.chars().count(), args.len());
+                    let raw_count = args.matches(r#""name""#).count();
+                    crate::vprintln!("  ⚠ 原始参数中 \"name\" 出现次数: {}", raw_count);
                     let data = serde_json::from_str::<Value>(args)
                         .or_else(|first_err| {
                             println!("  ⚠ JSON 格式错误 ({}), 尝试修复...", first_err);
@@ -333,13 +341,73 @@ fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
     let trimmed = raw.trim();
 
     // Try direct parse first
-    if let Ok(v) = serde_json::from_str(trimmed) {
-        return Ok(v);
+    let first_err = match serde_json::from_str(trimmed) {
+        Ok(v) => return Ok(v),
+        Err(e) => e,
+    };
+
+    // Show context around error position for debugging
+    let col = first_err.column();
+    if col > 0 && !trimmed.is_empty() {
+        let byte_pos = col.saturating_sub(1).min(trimmed.len());
+        let ctx_start = byte_pos.saturating_sub(80);
+        let ctx_start = (ctx_start..=byte_pos)
+            .rfind(|&i| trimmed.is_char_boundary(i))
+            .unwrap_or(0);
+        if ctx_start < trimmed.len() {
+            let snippet = &trimmed[ctx_start..];
+            let end = snippet.char_indices().nth(160).map(|(i, _)| i).unwrap_or(snippet.len());
+            eprintln!("  ⚠ 错误位置 {} 附近: ...{}...", col, &snippet[..end]);
+        }
     }
 
     // Strip markdown code fences if present (```json ... ```)
     let trimmed = strip_code_fence(trimmed);
     let trimmed = trimmed.as_str();
+
+    // Step 0a: sanitize unescaped control characters in JSON strings
+    let sanitized = sanitize_control_chars(trimmed);
+    if sanitized != trimmed {
+        if let Ok(v) = serde_json::from_str(&sanitized) {
+            println!("  ✓ 清理控制字符成功");
+            return Ok(v);
+        }
+        if let Some(extracted) = extract_balanced_json(&sanitized) {
+            if let Ok(v) = serde_json::from_str(&extracted) {
+                println!("  ✓ 清理控制字符 + 提取 JSON 成功");
+                return Ok(v);
+            }
+        }
+    }
+
+    // Step 0b: escape unescaped double quotes in string values (common LLM mistake)
+    let escaped_quotes = escape_unescaped_quotes(trimmed);
+    if escaped_quotes != trimmed {
+        if let Ok(v) = serde_json::from_str(&escaped_quotes) {
+            println!("  ✓ 转义未转义引号成功");
+            return Ok(v);
+        }
+        if let Some(extracted) = extract_balanced_json(&escaped_quotes) {
+            if let Ok(v) = serde_json::from_str(&extracted) {
+                println!("  ✓ 转义引号 + 提取 JSON 成功");
+                return Ok(v);
+            }
+        }
+        // Also try with close_unclosed (handles truncation + unescaped quotes)
+        let escaped_closed = close_unclosed(&escaped_quotes);
+        if escaped_closed != escaped_quotes {
+            if let Ok(v) = serde_json::from_str(&escaped_closed) {
+                println!("  ✓ 转义引号 + 闭合 JSON 成功");
+                return Ok(v);
+            }
+            if let Some(extracted) = extract_balanced_json(&escaped_closed) {
+                if let Ok(v) = serde_json::from_str(&extracted) {
+                    println!("  ✓ 转义引号 + 闭合 + 提取成功");
+                    return Ok(v);
+                }
+            }
+        }
+    }
 
     // Step 0: try extracting balanced JSON from the content (handles extra text after JSON)
     if let Some(extracted) = extract_balanced_json(trimmed) {
@@ -439,6 +507,36 @@ fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
         if let Ok(v) = serde_json::from_str(&extracted) {
             println!("  ✓ 修复 JSON 成功 (missing comma + unclosed + extract)");
             return Ok(v);
+        }
+    }
+
+    // Step 7: last resort — try trimming trailing characters one at a time
+    // (handles truncation artifacts that close_unclosed doesn't cover)
+    let trimmed_chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    for n in 1..trimmed_chars.len().min(50) {
+        let (end_idx, _) = trimmed_chars[trimmed_chars.len() - n];
+        let candidate = &trimmed[..end_idx];
+        if let Ok(v) = serde_json::from_str(candidate) {
+            println!("  ✓ 修复 JSON 成功 (trim trailing {} chars)", n);
+            return Ok(v);
+        }
+        if let Some(extracted) = extract_balanced_json(candidate) {
+            if let Ok(v) = serde_json::from_str(&extracted) {
+                println!("  ✓ 修复 JSON 成功 (trim+extract {} chars)", n);
+                return Ok(v);
+            }
+        }
+        // Try with escaped quotes on the trimmed candidate
+        let escaped = escape_unescaped_quotes(candidate);
+        if let Ok(v) = serde_json::from_str(&escaped) {
+            println!("  ✓ 修复 JSON 成功 (trim+escape {} chars)", n);
+            return Ok(v);
+        }
+        if let Some(extracted) = extract_balanced_json(&escaped) {
+            if let Ok(v) = serde_json::from_str(&extracted) {
+                println!("  ✓ 修复 JSON 成功 (trim+escape+extract {} chars)", n);
+                return Ok(v);
+            }
         }
     }
 
@@ -618,6 +716,13 @@ fn close_unclosed(s: &str) -> String {
 
     // Close unclosed string
     if in_string {
+        if escape {
+            // Input ended inside an incomplete escape sequence (trailing \).
+            // Remove the orphaned backslash so the closing quote isn't escaped.
+            if result.ends_with('\\') {
+                result.pop();
+            }
+        }
         result.push('"');
     }
 
@@ -628,6 +733,93 @@ fn close_unclosed(s: &str) -> String {
 
     // Close unclosed brackets
     while let Some(ch) = stack.pop() {
+        result.push(ch);
+    }
+
+    result
+}
+
+/// Escape unescaped control characters within JSON string values.
+/// serde_json rejects literal newlines, tabs, etc. inside strings.
+fn sanitize_control_chars(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut in_string = false;
+    let mut escape = false;
+
+    for ch in s.chars() {
+        if escape {
+            escape = false;
+            result.push(ch);
+            continue;
+        }
+        if ch == '\\' && in_string {
+            escape = true;
+            result.push(ch);
+            continue;
+        }
+        if ch == '"' && !escape {
+            in_string = !in_string;
+            result.push(ch);
+            continue;
+        }
+        if in_string && matches!(ch, '\n' | '\r' | '\t') {
+            result.push_str(match ch {
+                '\n' => "\\n",
+                '\r' => "\\r",
+                '\t' => "\\t",
+                _ => unreachable!(),
+            });
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
+}
+
+/// Try to fix unescaped double quotes inside JSON string values.
+/// Common LLM mistake: `"content": "他说"好"。"` — the inner `"` should be `\"`.
+/// Heuristic: a `"` is structural (ends the string) only if it's followed by `,`, `}`, `]`, or `:`
+/// (past any whitespace). Otherwise it's content and should be escaped.
+fn escape_unescaped_quotes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() + 8);
+    let mut in_string = false;
+    let mut escape = false;
+    let mut chars = s.char_indices().peekable();
+
+    while let Some((_, ch)) = chars.next() {
+        if escape {
+            escape = false;
+            result.push(ch);
+            continue;
+        }
+        if ch == '\\' && in_string {
+            escape = true;
+            result.push(ch);
+            continue;
+        }
+        if ch == '"' && !escape {
+            if in_string {
+                // Look ahead past whitespace to see if this is structural
+                let is_structural = chars
+                    .clone()
+                    .skip_while(|(_, c)| c.is_ascii_whitespace())
+                    .next()
+                    .map(|(_, c)| matches!(c, ',' | '}' | ']' | ':'))
+                    .unwrap_or(true); // end of input = structural (truncation)
+
+                if is_structural {
+                    in_string = false;
+                    result.push('"');
+                } else {
+                    result.push_str("\\\"");
+                }
+            } else {
+                in_string = true;
+                result.push('"');
+            }
+            continue;
+        }
         result.push(ch);
     }
 

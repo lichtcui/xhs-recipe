@@ -15,6 +15,8 @@ pub async fn process(raw: &RawContent, asr_model: &str, ocr_images: bool) -> Res
         text_parts.push(format!("描述：{}", raw.text_content));
     }
 
+    let mut image_texts = Vec::new();
+
     if raw.has_video {
         println!("  ↓ 下载并分析视频...");
         let video_text = transcribe_video(&raw.source_url, asr_model).await?;
@@ -23,12 +25,15 @@ pub async fn process(raw: &RawContent, asr_model: &str, ocr_images: bool) -> Res
         }
     } else if ocr_images && !raw.image_urls.is_empty() {
         println!("  ↓ 分析图片文字...");
-        match ocr_post_images(&raw.image_urls).await {
-            Ok(Some(text)) => {
-                text_parts.push(format!("图片文字内容：\n{}", text));
-            }
-            Ok(None) => {
-                println!("  ⚠ 图片未识别出文字");
+        match ocr_post_images_individual(&raw.image_urls).await {
+            Ok(texts) => {
+                let non_empty: Vec<&str> = texts.iter().filter(|t| !t.is_empty()).map(|s| s.as_str()).collect();
+                if non_empty.is_empty() {
+                    println!("  ⚠ 图片未识别出文字");
+                } else {
+                    text_parts.push(format!("图片文字内容：\n{}", non_empty.join("\n\n")));
+                }
+                image_texts = texts;
             }
             Err(e) => {
                 println!("  ⚠ 图片 OCR 失败: {}", e);
@@ -38,6 +43,7 @@ pub async fn process(raw: &RawContent, asr_model: &str, ocr_images: bool) -> Res
 
     Ok(TextContent {
         full_text: text_parts.join("\n\n"),
+        image_texts,
         title: raw.title.clone(),
         source: raw.source.clone(),
         source_url: raw.source_url.clone(),
@@ -559,8 +565,9 @@ async fn download_images(urls: &[String], output_dir: &std::path::Path) -> Vec<s
     paths
 }
 
-/// Download post images and extract text via macOS Vision OCR.
-async fn ocr_post_images(urls: &[String]) -> Result<Option<String>, TextifierError> {
+/// Download post images and OCR each one individually.
+/// Returns per-image OCR texts (one string per image, empty if no text).
+async fn ocr_post_images_individual(urls: &[String]) -> Result<Vec<String>, TextifierError> {
     let output_dir = tempfile::tempdir()
         .map_err(|e| TextifierError::OcrFailed(format!("tempdir: {}", e)))?;
     let dir = output_dir.path().to_path_buf();
@@ -568,10 +575,54 @@ async fn ocr_post_images(urls: &[String]) -> Result<Option<String>, TextifierErr
     let image_paths = download_images(urls, &dir).await;
 
     if image_paths.is_empty() {
-        return Ok(None);
+        return Ok(vec![]);
     }
 
-    ocr_all_frames(&image_paths)
+    ocr_images_individual(&image_paths)
+}
+
+/// Run OCR on multiple images and return per-image results (no dedup).
+fn ocr_images_individual(paths: &[PathBuf]) -> Result<Vec<String>, TextifierError> {
+    let helper = ensure_ocr_helper()?;
+
+    let output = Command::new(&helper)
+        .args(paths.iter().map(|p| p.to_string_lossy().to_string()))
+        .output()
+        .map_err(|e| TextifierError::OcrFailed(format!("OCR helper exec: {}", e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(TextifierError::OcrFailed(format!("OCR helper error: {}", stderr.trim())));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut results = Vec::new();
+    let mut current = String::new();
+
+    for line in stdout.lines() {
+        if line == "---FRAME_END---" {
+            results.push(current.trim().to_string());
+            current = String::new();
+        } else if !line.is_empty() {
+            if !current.is_empty() {
+                current.push('\n');
+            }
+            current.push_str(line);
+        }
+    }
+
+    // Handle case where last frame doesn't have FRAME_END
+    let trimmed = current.trim().to_string();
+    if !trimmed.is_empty() {
+        results.push(trimmed);
+    }
+
+    // Pad with empty strings to match expected count if some failed
+    while results.len() < paths.len() {
+        results.push(String::new());
+    }
+
+    Ok(results)
 }
 
 /// Check if two OCR results are similar enough to be duplicates.
