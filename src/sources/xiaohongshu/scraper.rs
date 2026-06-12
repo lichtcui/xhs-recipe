@@ -50,6 +50,13 @@ async fn scrape_zendriver(url: &str) -> Result<RawContent, SourceError> {
         .await
         .map_err(|e| SourceError::FetchFailed(format!("zendriver launch: {}", e)))?;
 
+    let result = scrape_zendriver_inner(&browser, url).await;
+    browser.close().await.ok();
+    result
+}
+
+/// Inner logic with guaranteed browser cleanup by the caller.
+async fn scrape_zendriver_inner(browser: &zendriver::Browser, url: &str) -> Result<RawContent, SourceError> {
     let jar = browser.cookies();
 
     // Load saved cookies before navigation
@@ -76,17 +83,13 @@ async fn scrape_zendriver(url: &str) -> Result<RawContent, SourceError> {
     let (title, desc, images, has_video) = extract_data(&tab).await?;
 
     if title.is_empty() || title == "手机号登录" || title == "登录" || title == "小红书" {
-        browser.close().await.ok();
         return Err(SourceError::FetchFailed("需要登录才能查看内容".into()));
     }
     if title == "当前笔记暂时无法浏览" {
-        browser.close().await.ok();
         return Err(SourceError::FetchFailed(
             "当前笔记暂时无法浏览（IP 被限流，尝试扫码登录或更换网络）".into(),
         ));
     }
-
-    browser.close().await.ok();
 
     Ok(RawContent {
         title,
@@ -143,14 +146,21 @@ fn parse_next_data(json_str: &str) -> Option<(String, String, Vec<String>, bool)
 
 // ── 2. reqwest direct HTTP (fallback) ────────────────────────────────
 
+fn xhs_http_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+            .redirect(reqwest::redirect::Policy::limited(10))
+            .timeout(Duration::from_secs(30))
+            .cookie_store(true)
+            .build()
+            .expect("reqwest client build")
+    })
+}
+
 async fn scrape_http(url: &str) -> Result<RawContent, SourceError> {
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .timeout(Duration::from_secs(30))
-        .cookie_store(true)
-        .build()
-        .map_err(|e| SourceError::FetchFailed(format!("http client: {}", e)))?;
+    let client = xhs_http_client();
 
     let resp = client
         .get(url)
@@ -204,8 +214,11 @@ async fn scrape_http(url: &str) -> Result<RawContent, SourceError> {
 // ── HTML parsing (shared) ────────────────────────────────────────────
 
 fn extract_next_data_from_html(html: &str) -> Option<serde_json::Value> {
-    let re =
-        regex::Regex::new(r#"<script id="__NEXT_DATA__"[^>]*>(.*?)</script>"#).ok()?;
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static RE2: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r#"<script id="__NEXT_DATA__"[^>]*>(.*?)</script>"#).expect("regex: next data")
+    });
     if let Some(cap) = re.captures(html) {
         let raw = cap
             .get(1)?
@@ -214,7 +227,9 @@ fn extract_next_data_from_html(html: &str) -> Option<serde_json::Value> {
             .replace("&amp;", "&");
         return serde_json::from_str::<serde_json::Value>(&raw).ok();
     }
-    let re2 = regex::Regex::new(r#"window\.__INITIAL_STATE__\s*=\s*(\{.*?\});"#).ok()?;
+    let re2 = RE2.get_or_init(|| {
+        regex::Regex::new(r#"window\.__INITIAL_STATE__\s*=\s*(\{.*?\});"#).expect("regex: initial state")
+    });
     if let Some(cap) = re2.captures(html) {
         return serde_json::from_str::<serde_json::Value>(cap.get(1)?.as_str()).ok();
     }
@@ -222,29 +237,29 @@ fn extract_next_data_from_html(html: &str) -> Option<serde_json::Value> {
 }
 
 fn extract_og_title(html: &str) -> Option<String> {
-    let re =
-        regex::Regex::new(r#"<meta[^>]*property="og:title"[^>]*content="([^"]*)"[^>]*/?>"#).ok()?;
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r#"<meta[^>]*property="og:title"[^>]*content="([^"]*)"[^>]*/?>"#).expect("regex: og:title")
+    });
     Some(re.captures(html)?.get(1)?.as_str().to_string())
 }
 
 fn extract_og_description(html: &str) -> Option<String> {
-    let re = regex::Regex::new(
-        r#"<meta[^>]*property="og:description"[^>]*content="([^"]*)"[^>]*/?>"#,
-    )
-    .ok()?;
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r#"<meta[^>]*property="og:description"[^>]*content="([^"]*)"[^>]*/?>"#).expect("regex: og:description")
+    });
     Some(re.captures(html)?.get(1)?.as_str().to_string())
 }
 
 fn extract_og_image(html: &str) -> Vec<String> {
-    if let Ok(re) =
-        regex::Regex::new(r#"<meta[^>]*property="og:image"[^>]*content="([^"]*)"[^>]*/?>"#)
-    {
-        re.captures_iter(html)
-            .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
-            .collect()
-    } else {
-        vec![]
-    }
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r#"<meta[^>]*property="og:image"[^>]*content="([^"]*)"[^>]*/?>"#).expect("regex: og:image")
+    });
+    re.captures_iter(html)
+        .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
+        .collect()
 }
 
 fn note_to_pagedata(note: &serde_json::Value) -> PageData {

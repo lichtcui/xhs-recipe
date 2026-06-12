@@ -344,6 +344,13 @@ fn parse_response(response: Value) -> Result<Vec<Recipe>, AnalyzerError> {
 
 /// Repair common LLM JSON errors: truncation, trailing commas, unclosed brackets, missing commas.
 fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
+    // Helper: try parse, fallback to extract_balanced_json
+    let try_val = |s: &str| -> Option<Value> {
+        serde_json::from_str(s).ok().or_else(|| {
+            extract_balanced_json(s).and_then(|e| serde_json::from_str(&e).ok())
+        })
+    };
+
     let trimmed = raw.trim();
 
     // Try direct parse first
@@ -374,146 +381,84 @@ fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
     // Step 0a: sanitize unescaped control characters in JSON strings
     let sanitized = sanitize_control_chars(trimmed);
     if sanitized != trimmed {
-        if let Ok(v) = serde_json::from_str(&sanitized) {
+        if let Some(v) = try_val(&sanitized) {
             println!("  ✓ 清理控制字符成功");
             return Ok(v);
-        }
-        if let Some(extracted) = extract_balanced_json(&sanitized) {
-            if let Ok(v) = serde_json::from_str(&extracted) {
-                println!("  ✓ 清理控制字符 + 提取 JSON 成功");
-                return Ok(v);
-            }
         }
     }
 
     // Step 0b: escape unescaped double quotes in string values (common LLM mistake)
     let escaped_quotes = escape_unescaped_quotes(trimmed);
     if escaped_quotes != trimmed {
-        if let Ok(v) = serde_json::from_str(&escaped_quotes) {
+        if let Some(v) = try_val(&escaped_quotes) {
             println!("  ✓ 转义未转义引号成功");
             return Ok(v);
-        }
-        if let Some(extracted) = extract_balanced_json(&escaped_quotes) {
-            if let Ok(v) = serde_json::from_str(&extracted) {
-                println!("  ✓ 转义引号 + 提取 JSON 成功");
-                return Ok(v);
-            }
         }
         // Also try with close_unclosed (handles truncation + unescaped quotes)
         let escaped_closed = close_unclosed(&escaped_quotes);
         if escaped_closed != escaped_quotes {
-            if let Ok(v) = serde_json::from_str(&escaped_closed) {
+            if let Some(v) = try_val(&escaped_closed) {
                 println!("  ✓ 转义引号 + 闭合 JSON 成功");
                 return Ok(v);
-            }
-            if let Some(extracted) = extract_balanced_json(&escaped_closed) {
-                if let Ok(v) = serde_json::from_str(&extracted) {
-                    println!("  ✓ 转义引号 + 闭合 + 提取成功");
-                    return Ok(v);
-                }
             }
         }
     }
 
     // Step 0: try extracting balanced JSON from the content (handles extra text after JSON)
-    if let Some(extracted) = extract_balanced_json(trimmed) {
-        if let Ok(v) = serde_json::from_str(&extracted) {
-            println!("  ✓ 提取平衡 JSON 成功");
-            return Ok(v);
-        }
+    if let Some(v) = try_val(trimmed) {
+        println!("  ✓ 提取平衡 JSON 成功");
+        return Ok(v);
     }
 
     // Step 1: remove trailing commas before ] or }
-    let fixed = regex::Regex::new(r",(\s*[}\]])")
-        .ok()
-        .map(|re| re.replace_all(trimmed, "$1").to_string());
+    static TRAILING_COMMA_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let trailing_re = TRAILING_COMMA_RE.get_or_init(|| {
+        regex::Regex::new(r",(\s*[}\]])").expect("invalid trailing comma regex")
+    });
+    let fixed = trailing_re.replace_all(trimmed, "$1").to_string();
 
-    if let Some(ref s) = fixed {
-        if let Ok(v) = serde_json::from_str(s.as_str()) {
-            println!("  ✓ 修复 trailing comma 成功");
-            return Ok(v);
-        }
-        // Also try extract balanced from comma-fixed version
-        if let Some(extracted) = extract_balanced_json(s) {
-            if let Ok(v) = serde_json::from_str(&extracted) {
-                println!("  ✓ 修复 trailing comma + 提取 JSON 成功");
-                return Ok(v);
-            }
-        }
+    if let Some(v) = try_val(&fixed) {
+        println!("  ✓ 修复 trailing comma 成功");
+        return Ok(v);
     }
 
     // Step 2: insert missing commas between adjacent structural tokens
     let with_commas = add_missing_commas(trimmed);
     if with_commas != trimmed {
-        if let Ok(v) = serde_json::from_str(&with_commas) {
+        if let Some(v) = try_val(&with_commas) {
             println!("  ✓ 修复缺失逗号成功");
             return Ok(v);
-        }
-        // Also try extract balanced from comma-fixed version
-        if let Some(extracted) = extract_balanced_json(&with_commas) {
-            if let Ok(v) = serde_json::from_str(&extracted) {
-                println!("  ✓ 修复缺失逗号 + 提取 JSON 成功");
-                return Ok(v);
-            }
         }
     }
 
     // Step 3: trailing comma + missing commas together
-    if let Some(ref s) = fixed {
-        let merged = add_missing_commas(s);
-        if merged != *s {
-            if let Ok(v) = serde_json::from_str(&merged) {
-                println!("  ✓ 修复 JSON 成功 (trailing comma + missing comma)");
-                return Ok(v);
-            }
-            if let Some(extracted) = extract_balanced_json(&merged) {
-                if let Ok(v) = serde_json::from_str(&extracted) {
-                    println!("  ✓ 修复 JSON + 提取成功 (trailing comma + missing comma)");
-                    return Ok(v);
-                }
-            }
+    let merged = add_missing_commas(&fixed);
+    if merged != fixed {
+        if let Some(v) = try_val(&merged) {
+            println!("  ✓ 修复 JSON 成功 (trailing comma + missing comma)");
+            return Ok(v);
         }
     }
 
     // Step 4: close unclosed strings, arrays, objects
     let repaired = close_unclosed(trimmed);
-    if let Ok(v) = serde_json::from_str(&repaired) {
+    if let Some(v) = try_val(&repaired) {
         println!("  ✓ 修复未闭合 JSON 成功");
         return Ok(v);
     }
-    if let Some(extracted) = extract_balanced_json(&repaired) {
-        if let Ok(v) = serde_json::from_str(&extracted) {
-            println!("  ✓ 修复未闭合 + 提取 JSON 成功");
-            return Ok(v);
-        }
-    }
 
     // Step 5: trailing comma + close unclosed
-    if let Some(ref s) = fixed {
-        let repaired = close_unclosed(s);
-        if let Ok(v) = serde_json::from_str(&repaired) {
-            println!("  ✓ 修复 JSON 成功 (trailing comma + unclosed)");
-            return Ok(v);
-        }
-        if let Some(extracted) = extract_balanced_json(&repaired) {
-            if let Ok(v) = serde_json::from_str(&extracted) {
-                println!("  ✓ 修复 JSON 成功 (trailing comma + unclosed + extract)");
-                return Ok(v);
-            }
-        }
+    let repaired = close_unclosed(&fixed);
+    if let Some(v) = try_val(&repaired) {
+        println!("  ✓ 修复 JSON 成功 (trailing comma + unclosed)");
+        return Ok(v);
     }
 
     // Step 6: missing commas + close unclosed
     let repaired = close_unclosed(&with_commas);
-    if let Ok(v) = serde_json::from_str(&repaired) {
+    if let Some(v) = try_val(&repaired) {
         println!("  ✓ 修复 JSON 成功 (missing comma + unclosed)");
         return Ok(v);
-    }
-    if let Some(extracted) = extract_balanced_json(&repaired) {
-        if let Ok(v) = serde_json::from_str(&extracted) {
-            println!("  ✓ 修复 JSON 成功 (missing comma + unclosed + extract)");
-            return Ok(v);
-        }
     }
 
     // Step 7: last resort — try trimming trailing characters one at a time
@@ -522,27 +467,15 @@ fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
     for n in 1..trimmed_chars.len().min(50) {
         let (end_idx, _) = trimmed_chars[trimmed_chars.len() - n];
         let candidate = &trimmed[..end_idx];
-        if let Ok(v) = serde_json::from_str(candidate) {
+        if let Some(v) = try_val(candidate) {
             println!("  ✓ 修复 JSON 成功 (trim trailing {} chars)", n);
             return Ok(v);
         }
-        if let Some(extracted) = extract_balanced_json(candidate) {
-            if let Ok(v) = serde_json::from_str(&extracted) {
-                println!("  ✓ 修复 JSON 成功 (trim+extract {} chars)", n);
-                return Ok(v);
-            }
-        }
         // Try with escaped quotes on the trimmed candidate
         let escaped = escape_unescaped_quotes(candidate);
-        if let Ok(v) = serde_json::from_str(&escaped) {
+        if let Some(v) = try_val(&escaped) {
             println!("  ✓ 修复 JSON 成功 (trim+escape {} chars)", n);
             return Ok(v);
-        }
-        if let Some(extracted) = extract_balanced_json(&escaped) {
-            if let Ok(v) = serde_json::from_str(&extracted) {
-                println!("  ✓ 修复 JSON 成功 (trim+escape+extract {} chars)", n);
-                return Ok(v);
-            }
         }
     }
 
@@ -728,10 +661,9 @@ fn close_unclosed(s: &str) -> String {
         result.push('"');
     }
 
-    // Remove trailing comma before closing brackets
-    while result.ends_with(',') || result.ends_with('\n') || result.ends_with(' ') {
-        result.pop();
-    }
+    // Remove trailing comma, newline, space before closing brackets
+    let trimmed_len = result.trim_end_matches(&[',', '\n', ' '][..]).len();
+    result.truncate(trimmed_len);
 
     // Close unclosed brackets
     while let Some(ch) = stack.pop() {

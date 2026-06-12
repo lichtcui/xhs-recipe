@@ -27,7 +27,6 @@ fn detect_collection_count(title: &str) -> Option<usize> {
 /// Process a collection post by batching per-image OCR texts into separate LLM calls.
 /// Each batch contains at most BATCH_SIZE images, ensuring the output fits within token limits.
 async fn extract_collection(
-    client: &impl crate::analyzer::HttpClient,
     text: &TextContent,
     total: usize,
     model: &str,
@@ -37,7 +36,7 @@ async fn extract_collection(
 
     if text.image_texts.is_empty() {
         // Fallback: no per-image OCR data, use combined text in a single call
-        return crate::analyzer::extract_recipe(client, &text.full_text, &[], model, api_key).await
+        return crate::analyzer::extract_recipe(crate::analyzer::shared_client(), &text.full_text, &[], model, api_key).await
             .map_err(PipelineError::from);
     }
 
@@ -118,7 +117,6 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Vec<Recipe>, PipelineEr
             if count.is_some() && total > 1 {
                 println!("  📦 检测到合集 (共{}道菜)，分批处理...", total);
                 extract_collection(
-                    crate::analyzer::shared_client(),
                     &text,
                     total,
                     opts.llm_model,

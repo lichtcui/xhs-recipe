@@ -132,7 +132,13 @@ impl Storage for LocalStorage {
         };
 
         let mut summaries: Vec<RecipeSummary> = dir
-            .flatten()
+            .filter_map(|entry| match entry {
+                Ok(e) => Some(e),
+                Err(e) => {
+                    eprintln!("  ⚠ 读取存储目录失败: {}", e);
+                    None
+                }
+            })
             .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
             .filter_map(|e| {
                 let data = std::fs::read_to_string(e.path()).ok()?;

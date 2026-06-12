@@ -449,7 +449,13 @@ fn extract_frames(video_path: &Path, output_dir: &Path) -> Result<Vec<PathBuf>, 
 
     let mut frames: Vec<PathBuf> = std::fs::read_dir(output_dir)
         .map_err(|e| TextifierError::OcrFailed(format!("read dir: {}", e)))?
-        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| match entry {
+            Ok(e) => Some(e),
+            Err(e) => {
+                eprintln!("  ⚠ 读取帧文件失败: {}", e);
+                None
+            }
+        })
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("png"))
         .collect();
@@ -525,28 +531,35 @@ fn ocr_all_frames(frame_paths: &[PathBuf]) -> Result<Option<String>, TextifierEr
 
 // ── Post image OCR ─────────────────────────────────────────────────
 
+fn image_download_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("reqwest client build")
+    })
+}
+
 /// Download post images to a local directory for OCR.
 async fn download_images(urls: &[String], output_dir: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
+    let client = image_download_client();
 
     let mut paths = Vec::new();
     for (i, url) in urls.iter().enumerate() {
         let resp = match client.get(url).send().await {
             Ok(r) if r.status().is_success() => r,
             _ => {
-                crate::vprintln!("  ⚠ 图片下载失败: {}", &url[..url.len().min(80)]);
+                println!("  ⚠ 图片下载失败: {}", &url[..url.len().min(80)]);
                 continue;
             }
         };
         let bytes = match resp.bytes().await {
             Ok(b) => b,
-            Err(_) => continue,
+            Err(_) => {
+                println!("  ⚠ 图片读取失败: {}", &url[..url.len().min(80)]);
+                continue;
+            }
         };
         let ext = if bytes.len() > 4 && &bytes[..4] == b"\x89PNG" {
             "png"
@@ -685,7 +698,7 @@ async fn transcribe_video(url: &str, asr_model: &str) -> Result<String, Textifie
         let frames = match extract_frames(&video_ocr, &dir_ocr) {
             Ok(f) => f,
             Err(e) => {
-                crate::vprintln!("  ⚠ 帧提取失败: {}", e);
+                println!("  ⚠ 帧提取失败: {}", e);
                 return Ok(None);
             }
         };

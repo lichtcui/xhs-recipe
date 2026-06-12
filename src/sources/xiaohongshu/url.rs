@@ -15,10 +15,12 @@ pub fn is_xhs_url(url: &str) -> bool {
 
 /// Extract note ID from a resolved Xiaohongshu URL.
 pub fn extract_note_id(url: &str) -> Option<String> {
-    for pattern in &[
+    static PATTERNS: OnceLock<[Regex; 2]> = OnceLock::new();
+    let patterns = PATTERNS.get_or_init(|| [
         Regex::new(r"/explore/([a-f0-9]+)").expect("regex: extract explore ID"),
         Regex::new(r"/discovery/item/([a-f0-9]+)").expect("regex: extract discovery ID"),
-    ] {
+    ]);
+    for pattern in patterns {
         if let Some(caps) = pattern.captures(url) {
             return Some(caps[1].to_string());
         }
@@ -47,6 +49,12 @@ pub async fn resolve_short_url(url: &str) -> Result<String, String> {
         .await
         .map_err(|e| format!("启动浏览器失败: {}", e))?;
 
+    let result = resolve_short_url_inner(&browser, url).await;
+    browser.close().await.ok();
+    result
+}
+
+async fn resolve_short_url_inner(browser: &zendriver::Browser, url: &str) -> Result<String, String> {
     let tab = browser.main_tab();
     tab.goto(url)
         .await
@@ -60,8 +68,6 @@ pub async fn resolve_short_url(url: &str) -> Result<String, String> {
         .await
         .map_err(|e| format!("获取 URL 失败: {}", e))?
         .to_string();
-
-    browser.close().await.ok();
 
     if resolved == url {
         return Err("短链解析失败: URL 未变化".into());

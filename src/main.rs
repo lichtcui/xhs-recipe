@@ -179,6 +179,16 @@ fn run_setup() {
     println!("📦 安装 Playwright 浏览器...");
     println!("  运行: playwright install chromium");
     println!();
+    println!("🔒 安全审计...");
+    match which("cargo-audit") {
+        Some(_) => println!("  ✓ cargo-audit 已安装（运行: cargo audit）"),
+        None => {
+            println!("  ✗ cargo-audit 未安装（cargo install cargo-audit）");
+            missing.push("cargo-audit");
+        }
+    }
+
+    println!();
     println!("🔑 配置 API Key");
     if std::env::var("DEEPSEEK_API_KEY").ok().filter(|k| !k.is_empty()).is_some() {
         println!("  ✓ DEEPSEEK_API_KEY 已设置");

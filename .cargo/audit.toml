@@ -1,0 +1,4 @@
+[advisories]
+ignore = []
+informational_warnings = ["unmaintained", "unsound", "notice"]
+severity_threshold = "low"

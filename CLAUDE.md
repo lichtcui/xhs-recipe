@@ -38,6 +38,9 @@ cargo run -- login [--headless]
 # Clear saved cookies
 cargo run -- logout
 
+# Security audit
+cargo audit
+
 # Check deps
 cargo run -- setup
 ```
@@ -86,7 +89,8 @@ cargo run -- extract <url>
 
 ```bash
 # Run all tests
-cargo test                   # 80 lib + 11 bin + 4 integration = 95 tests
+cargo test                   # 11 bin + 4 integration = 15 tests
+cargo audit                  # Security audit (install: cargo install cargo-audit)
 cargo test --lib             # Library tests only
 cargo test --bin xhs-recipe  # Binary (CLI) tests only
 
