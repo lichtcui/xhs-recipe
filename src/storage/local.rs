@@ -58,11 +58,45 @@ fn now_secs() -> u64 {
         .as_secs()
 }
 
+// ── Private helpers ──────────────────────────────────────────────
+
+impl LocalStorage {
+    /// Scan all stored recipes and return the ID of one matching `source_url`, if any.
+    async fn find_by_source_url(&self, source_url: &str) -> Result<Option<String>, StorageError> {
+        let mut dir = match tokio::fs::read_dir(&self.dir).await {
+            Ok(d) => d,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+
+        while let Some(entry) = dir.next_entry().await? {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "json") {
+                let data = match tokio::fs::read_to_string(&path).await {
+                    Ok(d) => d,
+                    Err(_) => continue,
+                };
+                if let Ok(stored) = serde_json::from_str::<StoredRecipe>(&data) {
+                    if stored.recipe.source_url == source_url {
+                        return Ok(Some(stored.id));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+}
+
 // ── Storage trait impl ────────────────────────────────────────────
 
 #[async_trait]
 impl Storage for LocalStorage {
     async fn save(&self, recipe: &Recipe) -> Result<String, StorageError> {
+        // Dedup: skip if a recipe with the same source_url already exists.
+        if let Some(existing) = self.find_by_source_url(&recipe.source_url).await? {
+            return Ok(existing);
+        }
+
         let id = generate_id(&recipe.source_url);
         let stored = StoredRecipe {
             id: id.clone(),
@@ -71,7 +105,7 @@ impl Storage for LocalStorage {
         };
         let json = serde_json::to_string_pretty(&stored)?;
 
-        // Create directory tree if needed, then write atomically via tempfile.
+        // Create directory tree if needed, then write.
         tokio::fs::create_dir_all(&self.dir).await?;
         let path = self.recipe_path(&id);
         tokio::fs::write(&path, json).await?;
@@ -101,7 +135,7 @@ impl Storage for LocalStorage {
             })
             .collect();
 
-        summaries.sort_by(|a, b| b.saved_at.cmp(&a.saved_at));
+        summaries.sort_by(|a, b| b.saved_at.cmp(&a.saved_at).then_with(|| b.id.cmp(&a.id)));
         Ok(summaries)
     }
 
@@ -254,6 +288,19 @@ mod tests {
         let id1 = generate_id("https://example.com/1");
         let id2 = generate_id("https://example.com/2");
         assert_ne!(id1, id2);
+    }
+
+    #[tokio::test]
+    async fn test_save_dedup_same_url() {
+        let tmp = TempDir::new().unwrap();
+        let store = LocalStorage::new(tmp.path().join("recipes"));
+
+        let id1 = store.save(&sample_recipe()).await.unwrap();
+        let id2 = store.save(&sample_recipe()).await.unwrap();
+        assert_eq!(id1, id2, "same source_url should return same ID");
+
+        let list = store.list().await.unwrap();
+        assert_eq!(list.len(), 1, "duplicate saves should not create extra entries");
     }
 
     #[test]
