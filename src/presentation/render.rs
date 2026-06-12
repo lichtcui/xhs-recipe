@@ -1,6 +1,30 @@
 use crate::models::Recipe;
 use colored::*;
 
+/// Render multiple recipes to terminal with dividers between them.
+pub fn render_terminal_multi(recipes: &[Recipe]) {
+    if recipes.is_empty() {
+        return;
+    }
+    if recipes.len() == 1 {
+        return render_terminal(&recipes[0]);
+    }
+
+    let food_recipes: Vec<&Recipe> = recipes.iter().filter(|r| r.is_food).collect();
+    if food_recipes.is_empty() {
+        // None are food — render first one which explains why
+        return render_terminal(&recipes[0]);
+    }
+
+    let total = food_recipes.len();
+    println!("\n  {} {}", "📋", format!("合集共 {} 个菜谱", total).green().bold());
+    for (i, recipe) in food_recipes.iter().enumerate() {
+        println!("\n  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("  {} {} / {}", "📖", format!("第{}个", i + 1).bold(), total);
+        render_terminal(recipe);
+    }
+}
+
 /// Render recipe to terminal with ANSI colors, matching Python `rich` output.
 pub fn render_terminal(recipe: &Recipe) {
     if !recipe.is_food {

@@ -1,7 +1,7 @@
-use crate::analyzer::AnalyzerError;
 use crate::models::Recipe;
 use crate::sources::SourceError;
 use crate::textifier::TextifierError;
+use crate::analyzer::AnalyzerError;
 use std::time::Duration;
 
 pub struct ExtractOptions<'a> {
@@ -14,7 +14,8 @@ pub struct ExtractOptions<'a> {
 }
 
 /// Run the full extraction pipeline: fetch → textify → analyze.
-pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> {
+/// Returns multiple recipes when the content is a collection (e.g. multi-recipe post).
+pub async fn extract(opts: ExtractOptions<'_>) -> Result<Vec<Recipe>, PipelineError> {
     let timeout = Duration::from_secs(opts.timeout_secs);
     tokio::time::timeout(timeout, async {
         // Step 1: Fetch
@@ -37,7 +38,7 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
         let text = crate::textifier::process(&raw, opts.asr_model, opts.send_images).await?;
 
         // Step 3: Analyze (images already OCR'd into text, no need to pass separately)
-        let mut recipe = crate::analyzer::extract_recipe(
+        let mut recipes = crate::analyzer::extract_recipe(
             crate::analyzer::shared_client(),
             &text.full_text,
             &[],  // images are already OCR'd into text_content
@@ -46,8 +47,11 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
         )
         .await?;
 
-        recipe.source_url = raw.source_url.clone();
-        Ok(recipe)
+        // Set source_url on every recipe
+        for recipe in &mut recipes {
+            recipe.source_url = raw.source_url.clone();
+        }
+        Ok(recipes)
     })
     .await
     .map_err(|_| PipelineError::Timeout)?

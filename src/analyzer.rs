@@ -55,14 +55,15 @@ pub(crate) fn shared_client() -> &'static RealHttpClient {
 
 // ── Extract Recipe ──────────────────────────────────────────────
 
-/// Extract a structured recipe from text + optional images using LLM function calling.
+/// Extract structured recipe(s) from text + optional images using LLM function calling.
+/// Returns multiple recipes when the content is a collection (e.g. multi-recipe post).
 pub async fn extract_recipe(
     client: &impl HttpClient,
     text: &str,
     _image_urls: &[String],
     model: &str,
     api_key: Option<&str>,
-) -> Result<Recipe, AnalyzerError> {
+) -> Result<Vec<Recipe>, AnalyzerError> {
     let api_key = match api_key {
         Some(k) => k.to_string(),
         None => resolve_api_key()?,
@@ -74,6 +75,55 @@ pub async fn extract_recipe(
     println!("  → 发送给 {} 分析... ({} 字, {} 字节)", model, text.chars().count(), text.len());
     let msg_content = vec![json!({"type": "text", "text": text})];
 
+    // ── Recipe item schema (shared by single and multi output) ────
+    let recipe_schema = json!({
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "菜谱名称"},
+            "total_time": {"type": "string", "description": "总耗时"},
+            "ingredients": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "amount": {"type": "string"},
+                        "prep": {"type": "string"}
+                    },
+                    "required": ["name"]
+                }
+            },
+            "seasonings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "amount": {"type": "string"}
+                    },
+                    "required": ["name"]
+                }
+            },
+            "equipment": {"type": "array", "items": {"type": "string"}},
+            "steps": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "time": {"type": "string"},
+                        "content": {"type": "string"}
+                    },
+                    "required": ["title", "content"]
+                }
+            },
+            "tips": {"type": "array", "items": {"type": "string"}},
+            "is_food": {"type": "boolean"},
+            "reason": {"type": "string"}
+        },
+        "required": ["name", "ingredients", "steps", "is_food"]
+    });
+
     let request_body = json!({
         "model": model,
         "max_tokens": 4096,
@@ -84,54 +134,18 @@ pub async fn extract_recipe(
         "tools": [{
             "type": "function",
             "function": {
-                "name": "output_recipe",
-                "description": "输出从内容中提取的菜谱信息",
+                "name": "output_recipes",
+                "description": "输出从内容中提取的一个或多个菜谱信息",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "菜谱名称"},
-                        "total_time": {"type": "string", "description": "总耗时"},
-                        "ingredients": {
+                        "recipes": {
                             "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "name": {"type": "string"},
-                                    "amount": {"type": "string"},
-                                    "prep": {"type": "string"}
-                                },
-                                "required": ["name"]
-                            }
-                        },
-                        "seasonings": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "name": {"type": "string"},
-                                    "amount": {"type": "string"}
-                                },
-                                "required": ["name"]
-                            }
-                        },
-                        "equipment": {"type": "array", "items": {"type": "string"}},
-                        "steps": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {"type": "string"},
-                                    "time": {"type": "string"},
-                                    "content": {"type": "string"}
-                                },
-                                "required": ["title", "content"]
-                            }
-                        },
-                        "tips": {"type": "array", "items": {"type": "string"}},
-                        "is_food": {"type": "boolean"},
-                        "reason": {"type": "string"}
+                            "description": "菜谱列表（单个菜谱也放在数组中）",
+                            "items": recipe_schema
+                        }
                     },
-                    "required": ["name", "ingredients", "steps", "is_food"]
+                    "required": ["recipes"]
                 }
             }
         }],
@@ -144,11 +158,20 @@ pub async fn extract_recipe(
         request_body,
     ).await?;
 
-    let recipe = parse_response(response_json)?;
-    let recipe_name = if recipe.name.is_empty() { "未识别" } else { &recipe.name };
-    let suffix = if !recipe.is_food { " (非美食)" } else { "" };
-    println!("  ✓ AI 分析完成: {}{}", recipe_name, suffix);
-    Ok(recipe)
+    let recipes = parse_response(response_json)?;
+
+    let count = recipes.len();
+    let first_name = recipes.first().map(|r| r.name.as_str()).unwrap_or("");
+    let suffix = if count == 1 {
+        let is_food = recipes[0].is_food;
+        let note = if !is_food { " (非美食)" } else { "" };
+        format!("{}{}", first_name, note)
+    } else {
+        let food_count = recipes.iter().filter(|r| r.is_food).count();
+        format!("{} ({}个菜谱)", first_name, food_count)
+    };
+    println!("  ✓ AI 分析完成: {}", suffix);
+    Ok(recipes)
 }
 
 // ── API Key ────────────────────────────────────────────────────────
@@ -225,7 +248,8 @@ const SYSTEM_PROMPT: &str = r#"你是专业厨师和食谱分析师。你擅长�
 注意事项：
 - 如果内容与美食/菜谱无关，设置 is_food=false 并说明原因
 - 如果某些信息在内容中没有明确提及，**不要编造**
-- 用量单位保持原文（如克、毫升、勺、碗等）"#;
+- 用量单位保持原文（如克、毫升、勺、碗等）
+- **重要：如果内容中包含多个菜谱（合集、多图对应多菜谱等），请将每个菜谱分别提取为独立的菜谱对象，放入 recipes 数组中**"#;
 
 // ── Image Handling ─────────────────────────────────────────────────
 
@@ -234,7 +258,7 @@ const SYSTEM_PROMPT: &str = r#"你是专业厨师和食谱分析师。你擅长�
 
 // ── Response Parsing ───────────────────────────────────────────────
 
-fn parse_response(response: Value) -> Result<Recipe, AnalyzerError> {
+fn parse_response(response: Value) -> Result<Vec<Recipe>, AnalyzerError> {
     let choice = response["choices"][0]
         .as_object()
         .ok_or_else(|| AnalyzerError::ParseError("no choices in response".into()))?;
@@ -243,18 +267,32 @@ fn parse_response(response: Value) -> Result<Recipe, AnalyzerError> {
     if let Some(tool_calls) = choice.get("message").and_then(|m| m.get("tool_calls")) {
         if let Some(tc_array) = tool_calls.as_array() {
             for tc in tc_array {
-                if tc["function"]["name"].as_str() == Some("output_recipe") {
+                let func_name = tc["function"]["name"].as_str().unwrap_or("");
+                if func_name == "output_recipes" || func_name == "output_recipe" {
                     let args = tc["function"]["arguments"]
                         .as_str()
                         .ok_or_else(|| AnalyzerError::ParseError("missing arguments".into()))?;
-                    // Try direct parse first, then repair if needed
                     let data = serde_json::from_str::<Value>(args)
                         .or_else(|first_err| {
                             println!("  ⚠ JSON 格式错误 ({}), 尝试修复...", first_err);
                             repair_json(args)
                         })
                         .map_err(|e| AnalyzerError::ParseError(format!("invalid JSON in tool call: {}", e)))?;
-                    return Ok(parse_recipe_data(&data));
+
+                    if func_name == "output_recipes" {
+                        if let Some(recipes_array) = data["recipes"].as_array() {
+                            if !recipes_array.is_empty() {
+                                return Ok(recipes_array.iter().map(parse_recipe_data).collect());
+                            }
+                        }
+                        // Fallback: if recipes array is missing/empty, try top-level keys (single recipe)
+                        if data.get("name").is_some() || data.get("ingredients").is_some() {
+                            return Ok(vec![parse_recipe_data(&data)]);
+                        }
+                    } else {
+                        // Old output_recipe: single recipe
+                        return Ok(vec![parse_recipe_data(&data)]);
+                    }
                 }
             }
         }
@@ -263,7 +301,27 @@ fn parse_response(response: Value) -> Result<Recipe, AnalyzerError> {
     // Fallback: try to extract from text content
     if let Some(content) = choice.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_str()) {
         if content.len() > 50 {
-            return Ok(fallback_parse(content));
+            return Ok(vec![fallback_parse(content)]);
+        }
+    }
+
+    // Debug: log bad JSON for diagnosis
+    if let Some(content) = choice.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_str()) {
+        if content.len() > 200 {
+            crate::vprintln!("  ⚠ LLM 原始响应 (前200字): {}...", &content[..200]);
+        }
+    }
+    // Show tool call arguments for debugging
+    if let Some(tool_calls) = choice.get("message").and_then(|m| m.get("tool_calls")) {
+        if let Some(tc_array) = tool_calls.as_array() {
+            for tc in tc_array {
+                if let Some(args) = tc["function"]["arguments"].as_str() {
+                    if args.len() > 100 {
+                        crate::vprintln!("  ⚠ 工具参数 (前100字): {}...", &args[..100]);
+                        crate::vprintln!("  ⚠ 工具参数 (后100字): ...{}", &args[args.len().saturating_sub(100)..]);
+                    }
+                }
+            }
         }
     }
 
@@ -279,7 +337,19 @@ fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
         return Ok(v);
     }
 
-    // Common fix 1: remove trailing commas before ] or }
+    // Strip markdown code fences if present (```json ... ```)
+    let trimmed = strip_code_fence(trimmed);
+    let trimmed = trimmed.as_str();
+
+    // Step 0: try extracting balanced JSON from the content (handles extra text after JSON)
+    if let Some(extracted) = extract_balanced_json(trimmed) {
+        if let Ok(v) = serde_json::from_str(&extracted) {
+            println!("  ✓ 提取平衡 JSON 成功");
+            return Ok(v);
+        }
+    }
+
+    // Step 1: remove trailing commas before ] or }
     let fixed = regex::Regex::new(r",(\s*[}\]])")
         .ok()
         .map(|re| re.replace_all(trimmed, "$1").to_string());
@@ -289,19 +359,32 @@ fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
             println!("  ✓ 修复 trailing comma 成功");
             return Ok(v);
         }
+        // Also try extract balanced from comma-fixed version
+        if let Some(extracted) = extract_balanced_json(s) {
+            if let Ok(v) = serde_json::from_str(&extracted) {
+                println!("  ✓ 修复 trailing comma + 提取 JSON 成功");
+                return Ok(v);
+            }
+        }
     }
 
-    // Common fix 2: insert missing commas between adjacent structural tokens
-    // e.g. `}{` `}[` `]{` `][` — common when LLM omits commas in arrays
+    // Step 2: insert missing commas between adjacent structural tokens
     let with_commas = add_missing_commas(trimmed);
     if with_commas != trimmed {
         if let Ok(v) = serde_json::from_str(&with_commas) {
             println!("  ✓ 修复缺失逗号成功");
             return Ok(v);
         }
+        // Also try extract balanced from comma-fixed version
+        if let Some(extracted) = extract_balanced_json(&with_commas) {
+            if let Ok(v) = serde_json::from_str(&extracted) {
+                println!("  ✓ 修复缺失逗号 + 提取 JSON 成功");
+                return Ok(v);
+            }
+        }
     }
 
-    // Also try with_commas + trailing comma fix together
+    // Step 3: trailing comma + missing commas together
     if let Some(ref s) = fixed {
         let merged = add_missing_commas(s);
         if merged != *s {
@@ -309,34 +392,135 @@ fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
                 println!("  ✓ 修复 JSON 成功 (trailing comma + missing comma)");
                 return Ok(v);
             }
+            if let Some(extracted) = extract_balanced_json(&merged) {
+                if let Ok(v) = serde_json::from_str(&extracted) {
+                    println!("  ✓ 修复 JSON + 提取成功 (trailing comma + missing comma)");
+                    return Ok(v);
+                }
+            }
         }
     }
 
-    // Common fix 3: close unclosed strings, arrays, objects
+    // Step 4: close unclosed strings, arrays, objects
     let repaired = close_unclosed(trimmed);
     if let Ok(v) = serde_json::from_str(&repaired) {
         println!("  ✓ 修复未闭合 JSON 成功");
         return Ok(v);
     }
+    if let Some(extracted) = extract_balanced_json(&repaired) {
+        if let Ok(v) = serde_json::from_str(&extracted) {
+            println!("  ✓ 修复未闭合 + 提取 JSON 成功");
+            return Ok(v);
+        }
+    }
 
-    // Combined: trailing comma THEN close
+    // Step 5: trailing comma + close unclosed
     if let Some(ref s) = fixed {
         let repaired = close_unclosed(s);
         if let Ok(v) = serde_json::from_str(&repaired) {
             println!("  ✓ 修复 JSON 成功 (trailing comma + unclosed)");
             return Ok(v);
         }
+        if let Some(extracted) = extract_balanced_json(&repaired) {
+            if let Ok(v) = serde_json::from_str(&extracted) {
+                println!("  ✓ 修复 JSON 成功 (trailing comma + unclosed + extract)");
+                return Ok(v);
+            }
+        }
     }
 
-    // Combined: missing commas THEN close
+    // Step 6: missing commas + close unclosed
     let repaired = close_unclosed(&with_commas);
     if let Ok(v) = serde_json::from_str(&repaired) {
         println!("  ✓ 修复 JSON 成功 (missing comma + unclosed)");
         return Ok(v);
     }
+    if let Some(extracted) = extract_balanced_json(&repaired) {
+        if let Ok(v) = serde_json::from_str(&extracted) {
+            println!("  ✓ 修复 JSON 成功 (missing comma + unclosed + extract)");
+            return Ok(v);
+        }
+    }
 
     // Return original error
     serde_json::from_str(trimmed)
+}
+
+/// Try to extract a balanced JSON object or array from text that may have extra content.
+/// Scans for the first `{` or `[`, then finds the matching closing brace/bracket.
+fn extract_balanced_json(s: &str) -> Option<String> {
+    let s = s.trim();
+    // Find the first structural character
+    let start = s.find(|c| c == '{' || c == '[')?;
+    let target = &s[start..];
+    let mut chars = target.char_indices().peekable();
+    let mut in_string = false;
+    let mut escape = false;
+    let mut depth_obj: i32 = 0;
+    let mut depth_arr: i32 = 0;
+    let mut start_idx = 0;
+    let mut end_idx = 0;
+
+    while let Some((i, ch)) = chars.next() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if ch == '\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if ch == '"' && !escape {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+
+        match ch {
+            '{' => {
+                if depth_obj == 0 && depth_arr == 0 {
+                    start_idx = i;
+                }
+                depth_obj += 1;
+            }
+            '}' => {
+                depth_obj -= 1;
+                if depth_obj == 0 && depth_arr == 0 {
+                    end_idx = i + 1; // include the closing brace
+                    break;
+                }
+            }
+            '[' => depth_arr += 1,
+            ']' => depth_arr -= 1,
+            _ => {}
+        }
+    }
+
+    if end_idx > start_idx {
+        Some(target[start_idx..end_idx].to_string())
+    } else {
+        None
+    }
+}
+
+/// Strip markdown code fences and surrounding whitespace (```json ... ```, ~~~json ... ~~~).
+fn strip_code_fence(s: &str) -> String {
+    let s = s.trim();
+    // ```json ... ``` or ``` ... ```
+    if let Some(inner) = s.strip_prefix("```").or_else(|| s.strip_prefix("~~~")) {
+        // Find the first newline to remove the opening line
+        if let Some(nl) = inner.find('\n') {
+            let after_open = inner[nl + 1..].trim();
+            // Strip trailing ```
+            if let Some(end) = after_open.rfind("```").or_else(|| after_open.rfind("~~~")) {
+                return after_open[..end].trim().to_string();
+            }
+            return after_open.to_string();
+        }
+    }
+    s.to_string()
 }
 
 /// Insert commas between adjacent structural tokens that are missing them.
@@ -762,16 +946,37 @@ mod tests {
                 "message": {
                     "tool_calls": [{
                         "function": {
-                            "name": "output_recipe",
-                            "arguments": r#"{"name": "测试菜", "ingredients": [{"name": "肉"}], "steps": [{"title": "步骤1", "content": "做"}], "is_food": true}"#
+                            "name": "output_recipes",
+                            "arguments": r#"{"recipes":[{"name": "测试菜", "ingredients": [{"name": "肉"}], "steps": [{"title": "步骤1", "content": "做"}], "is_food": true}]}"#
                         }
                     }]
                 }
             }]
         });
-        let recipe = parse_response(response).unwrap();
-        assert_eq!(recipe.name, "测试菜");
-        assert_eq!(recipe.ingredients[0].name, "肉");
+        let recipes = parse_response(response).unwrap();
+        assert_eq!(recipes.len(), 1);
+        assert_eq!(recipes[0].name, "测试菜");
+        assert_eq!(recipes[0].ingredients[0].name, "肉");
+    }
+
+    #[test]
+    fn test_parse_response_multi_recipes() {
+        let response = json!({
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {
+                            "name": "output_recipes",
+                            "arguments": r#"{"recipes":[{"name":"菜1","ingredients":[{"name":"肉"}],"steps":[{"title":"步骤","content":"做"}],"is_food":true},{"name":"菜2","ingredients":[{"name":"鱼"}],"steps":[{"title":"步骤","content":"煮"}],"is_food":true}]}"#
+                        }
+                    }]
+                }
+            }]
+        });
+        let recipes = parse_response(response).unwrap();
+        assert_eq!(recipes.len(), 2);
+        assert_eq!(recipes[0].name, "菜1");
+        assert_eq!(recipes[1].name, "菜2");
     }
 
     #[test]
@@ -783,9 +988,10 @@ mod tests {
                 }
             }]
         });
-        let recipe = parse_response(response).unwrap();
-        assert_eq!(recipe.name, "红烧肉");
-        assert!(recipe.is_food);
+        let recipes = parse_response(response).unwrap();
+        assert_eq!(recipes.len(), 1);
+        assert_eq!(recipes[0].name, "红烧肉");
+        assert!(recipes[0].is_food);
     }
 
     #[test]
@@ -858,19 +1064,20 @@ mod tests {
                 "message": {
                     "tool_calls": [{
                         "function": {
-                            "name": "output_recipe",
-                            "arguments": r#"{"name":"测试菜","ingredients":[{"name":"肉"}],"steps":[{"title":"步骤1","content":"做"}],"is_food":true}"#
+                            "name": "output_recipes",
+                            "arguments": r#"{"recipes":[{"name":"测试菜","ingredients":[{"name":"肉"}],"steps":[{"title":"步骤1","content":"做"}],"is_food":true}]}"#
                         }
                     }]
                 }
             }]
         }));
-        let recipe = rt.block_on(extract_recipe(
+        let recipes = rt.block_on(extract_recipe(
             &client, "做菜步骤", &[], "deepseek-chat", Some("sk-test"),
         )).unwrap();
-        assert_eq!(recipe.name, "测试菜");
-        assert_eq!(recipe.ingredients[0].name, "肉");
-        assert!(recipe.is_food);
+        assert_eq!(recipes.len(), 1);
+        assert_eq!(recipes[0].name, "测试菜");
+        assert_eq!(recipes[0].ingredients[0].name, "肉");
+        assert!(recipes[0].is_food);
     }
 
     #[test]

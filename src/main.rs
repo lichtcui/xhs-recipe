@@ -73,12 +73,12 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_mod
     // Check cache first
     let store = LocalStorage::default();
     match rt.block_on(store.get_by_source_url(url)) {
-        Ok(Some(recipe)) => {
+        Ok(recipes) if !recipes.is_empty() => {
             xhs_recipe::vprintln!("✓ 命中缓存，直接显示已保存的菜谱\n");
-            xhs_recipe::presentation::render::render_terminal(&recipe);
+            xhs_recipe::presentation::render::render_terminal_multi(&recipes);
             return;
         }
-        Ok(None) => { /* cache miss, continue to pipeline */ }
+        Ok(_) => { /* cache miss, continue to pipeline */ }
         Err(e) => {
             xhs_recipe::vprintln!("⚠ 读取本地缓存失败: {}（将继续提取）", e);
         }
@@ -96,22 +96,27 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_mod
     };
 
     match rt.block_on(xhs_recipe::pipeline::extract(opts)) {
-        Ok(recipe) => {
-            xhs_recipe::presentation::render::render_terminal(&recipe);
+        Ok(recipes) => {
+            xhs_recipe::presentation::render::render_terminal_multi(&recipes);
 
-            // Auto-save to local storage
-            match rt.block_on(store.save(&recipe)) {
-                Ok(id) => {
-                    let short = &id[..12];
-                    println!("\n✓ 已保存到本地 ({}...)。运行 `xhs-recipe show {}...` 查看", short, short);
-                }
-                Err(e) => {
-                    eprintln!("⚠ 本地保存失败: {}（已跳过）", e);
+            // Auto-save each recipe to local storage
+            let mut saved_ids: Vec<String> = Vec::new();
+            for recipe in &recipes {
+                match rt.block_on(store.save(recipe)) {
+                    Ok(id) => saved_ids.push(id),
+                    Err(e) => {
+                        eprintln!("⚠ 本地保存失败: {}（已跳过）", e);
+                    }
                 }
             }
 
+            if let Some(first_id) = saved_ids.first() {
+                let short = &first_id[..12];
+                println!("\n✓ 已保存 {} 个菜谱到本地 ({}...)。运行 `xhs-recipe list` 查看", saved_ids.len(), short);
+            }
+
             if let Some(path) = output {
-                if let Err(e) = xhs_recipe::presentation::save::save_to_file(&recipe, path) {
+                if let Err(e) = xhs_recipe::presentation::save::save_to_file(&recipes, path) {
                     eprintln!("保存失败: {}", e);
                 } else {
                     println!("\n✓ 已保存到 {}", path.display());

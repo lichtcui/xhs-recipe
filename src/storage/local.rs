@@ -61,29 +61,32 @@ fn now_secs() -> u64 {
 // ── Private helpers ──────────────────────────────────────────────
 
 impl LocalStorage {
-    /// Scan all stored recipes and return the ID of one matching `source_url`, if any.
-    async fn find_id_by_source_url(&self, source_url: &str) -> Result<Option<String>, StorageError> {
+    /// Scan all stored recipes and return those matching `source_url`.
+    async fn find_all_by_source_url(&self, source_url: &str) -> Result<Vec<StoredRecipe>, StorageError> {
         let mut dir = match tokio::fs::read_dir(&self.dir).await {
             Ok(d) => d,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
             Err(e) => return Err(e.into()),
         };
 
+        let mut results = Vec::new();
         while let Some(entry) = dir.next_entry().await? {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "json") {
-                let data = match tokio::fs::read_to_string(&path).await {
-                    Ok(d) => d,
-                    Err(_) => continue,
-                };
-                if let Ok(stored) = serde_json::from_str::<StoredRecipe>(&data) {
+                if let Ok(stored) = Self::read_stored(&path).await {
                     if stored.recipe.source_url == source_url {
-                        return Ok(Some(stored.id));
+                        results.push(stored);
                     }
                 }
             }
         }
-        Ok(None)
+        Ok(results)
+    }
+
+    /// Read a StoredRecipe from a JSON file path.
+    async fn read_stored(path: &std::path::Path) -> Result<StoredRecipe, StorageError> {
+        let data = tokio::fs::read_to_string(path).await?;
+        Ok(serde_json::from_str(&data)?)
     }
 }
 
@@ -92,9 +95,12 @@ impl LocalStorage {
 #[async_trait]
 impl Storage for LocalStorage {
     async fn save(&self, recipe: &Recipe) -> Result<String, StorageError> {
-        // Dedup: skip if a recipe with the same source_url already exists.
-        if let Some(id) = self.find_id_by_source_url(&recipe.source_url).await? {
-            return Ok(id);
+        // Dedup by (source_url, name) pair: skip if a recipe with the same URL and name exists.
+        let existing = self.find_all_by_source_url(&recipe.source_url).await?;
+        for stored in &existing {
+            if stored.recipe.name == recipe.name {
+                return Ok(stored.id.clone());
+            }
         }
 
         let id = generate_id(&recipe.source_url);
@@ -151,12 +157,9 @@ impl Storage for LocalStorage {
         Ok(stored.recipe)
     }
 
-    async fn get_by_source_url(&self, source_url: &str) -> Result<Option<Recipe>, StorageError> {
-        let id = match self.find_id_by_source_url(source_url).await? {
-            Some(id) => id,
-            None => return Ok(None),
-        };
-        self.get(&id).await.map(Some)
+    async fn get_by_source_url(&self, source_url: &str) -> Result<Vec<Recipe>, StorageError> {
+        let existing = self.find_all_by_source_url(source_url).await?;
+        Ok(existing.into_iter().map(|s| s.recipe).collect())
     }
 
     async fn delete(&self, id: &str) -> Result<(), StorageError> {
@@ -299,16 +302,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_save_dedup_same_url() {
+    async fn test_save_dedup_same_url_and_name() {
         let tmp = TempDir::new().unwrap();
         let store = LocalStorage::new(tmp.path().join("recipes"));
 
         let id1 = store.save(&sample_recipe()).await.unwrap();
         let id2 = store.save(&sample_recipe()).await.unwrap();
-        assert_eq!(id1, id2, "same source_url should return same ID");
+        assert_eq!(id1, id2, "same source_url + name should return same ID");
 
         let list = store.list().await.unwrap();
         assert_eq!(list.len(), 1, "duplicate saves should not create extra entries");
+    }
+
+    #[tokio::test]
+    async fn test_save_multi_recipes_same_url() {
+        let tmp = TempDir::new().unwrap();
+        let store = LocalStorage::new(tmp.path().join("recipes"));
+
+        let r1 = sample_recipe(); // name: "番茄炒蛋", source_url: "https://example.com/test"
+        let r2 = Recipe {
+            name: "红烧肉".into(),
+            source_url: "https://example.com/test".into(), // same URL, different name
+            ..sample_recipe()
+        };
+
+        let id1 = store.save(&r1).await.unwrap();
+        let id2 = store.save(&r2).await.unwrap();
+        assert_ne!(id1, id2, "different names from same URL should get different IDs");
+
+        let recipes = store.get_by_source_url("https://example.com/test").await.unwrap();
+        assert_eq!(recipes.len(), 2, "both recipes should be returned");
     }
 
     #[test]

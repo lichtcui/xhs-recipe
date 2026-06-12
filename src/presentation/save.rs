@@ -1,12 +1,22 @@
 use std::path::Path;
 use crate::models::Recipe;
 
-/// Save recipe to file (.md or .json based on extension).
-pub fn save_to_file(recipe: &Recipe, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+/// Save recipe(s) to file (.md or .json based on extension).
+/// For multiple recipes, saves all to a single file with separators.
+pub fn save_to_file(recipes: &[Recipe], path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if recipes.is_empty() {
+        return Ok(());
+    }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("md");
     match ext {
-        "json" => save_json(recipe, path),
-        _ => save_md(recipe, path),
+        "json" => {
+            if recipes.len() == 1 {
+                save_json(&recipes[0], path)
+            } else {
+                save_json_array(recipes, path)
+            }
+        }
+        _ => save_md_multi(recipes, path),
     }
 }
 
@@ -16,7 +26,27 @@ fn save_json(recipe: &Recipe, path: &Path) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-fn save_md(recipe: &Recipe, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn save_json_array(recipes: &[Recipe], path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let json = serde_json::to_string_pretty(recipes)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+
+fn save_md_multi(recipes: &[Recipe], path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let mut parts: Vec<String> = recipes.iter()
+        .filter(|r| r.is_food)
+        .map(recipe_to_md)
+        .collect();
+    if parts.is_empty() && !recipes.is_empty() {
+        // None are food — write the first one explaining why
+        parts.push(recipe_to_md(&recipes[0]));
+    }
+    let combined = parts.join("\n\n---\n\n");
+    std::fs::write(path, combined)?;
+    Ok(())
+}
+
+fn recipe_to_md(recipe: &Recipe) -> String {
     let mut lines = Vec::new();
     lines.push(format!("# {}", recipe.name));
     lines.push(String::new());
@@ -82,8 +112,7 @@ fn save_md(recipe: &Recipe, path: &Path) -> Result<(), Box<dyn std::error::Error
         }
         lines.push(String::new());
     }
-    std::fs::write(path, lines.join("\n"))?;
-    Ok(())
+    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -112,7 +141,7 @@ mod tests {
     fn test_json_output_matches_golden() {
         let recipe = load_golden_json();
         let tmp = std::env::temp_dir().join("test_recipe_output.json");
-        save_to_file(&recipe, &tmp).unwrap();
+        save_to_file(&[recipe], &tmp).unwrap();
         let produced: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&tmp).unwrap()).unwrap();
         let _ = std::fs::remove_file(&tmp);
 
@@ -130,7 +159,7 @@ mod tests {
     fn test_markdown_output_matches_golden() {
         let recipe = load_golden_json();
         let tmp = std::env::temp_dir().join("test_recipe_output.md");
-        save_to_file(&recipe, &tmp).unwrap();
+        save_to_file(&[recipe], &tmp).unwrap();
         let produced = std::fs::read_to_string(&tmp).unwrap();
         let _ = std::fs::remove_file(&tmp);
 
@@ -157,7 +186,7 @@ mod tests {
             reason: Some("旅游攻略".into()),
         };
         let tmp = std::env::temp_dir().join("test_non_food.json");
-        save_to_file(&recipe, &tmp).unwrap();
+        save_to_file(&[recipe], &tmp).unwrap();
         let produced: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&tmp).unwrap()).unwrap();
         let _ = std::fs::remove_file(&tmp);
 
@@ -171,9 +200,30 @@ mod tests {
     fn test_markdown_output_empty_recipe() {
         let recipe = Recipe::default();
         let tmp = std::env::temp_dir().join("test_empty.md");
-        save_to_file(&recipe, &tmp).unwrap();
+        save_to_file(&[recipe], &tmp).unwrap();
         let produced = std::fs::read_to_string(&tmp).unwrap();
         let _ = std::fs::remove_file(&tmp);
         assert!(produced.starts_with("# "));
+    }
+
+    #[test]
+    fn test_save_multi_markdown() {
+        let r1 = Recipe {
+            name: "菜1".into(),
+            steps: vec![crate::models::Step { title: "步骤".into(), time: None, content: "内容1".into() }],
+            ..Default::default()
+        };
+        let r2 = Recipe {
+            name: "菜2".into(),
+            steps: vec![crate::models::Step { title: "步骤".into(), time: None, content: "内容2".into() }],
+            ..Default::default()
+        };
+        let tmp = std::env::temp_dir().join("test_multi.md");
+        save_to_file(&[r1, r2], &tmp).unwrap();
+        let produced = std::fs::read_to_string(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert!(produced.contains("# 菜1"));
+        assert!(produced.contains("# 菜2"));
+        assert!(produced.contains("---"));
     }
 }
