@@ -3,6 +3,8 @@ use crate::models::TextContent;
 use crate::sources::SourceError;
 use crate::textifier::TextifierError;
 use crate::analyzer::AnalyzerError;
+use regex::Regex;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 pub struct ExtractOptions<'a> {
@@ -16,7 +18,8 @@ pub struct ExtractOptions<'a> {
 
 /// Try to detect collection post count from title (e.g., "11道", "10款", "5种").
 fn detect_collection_count(title: &str) -> Option<usize> {
-    let re = regex::Regex::new(r"(\d+)\s*[道款式个]").ok()?;
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"(\d+)\s*[道款式个]").expect("invalid regex"));
     let cap = re.captures(title)?;
     cap[1].parse::<usize>().ok()
 }

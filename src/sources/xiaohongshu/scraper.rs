@@ -214,7 +214,7 @@ fn extract_next_data_from_html(html: &str) -> Option<serde_json::Value> {
             .replace("&amp;", "&");
         return serde_json::from_str::<serde_json::Value>(&raw).ok();
     }
-    let re2 = regex::Regex::new(r#"window\.__INITIAL_STATE__\s*=\s*({.*?});"#).ok()?;
+    let re2 = regex::Regex::new(r#"window\.__INITIAL_STATE__\s*=\s*(\{.*?\});"#).ok()?;
     if let Some(cap) = re2.captures(html) {
         return serde_json::from_str::<serde_json::Value>(cap.get(1)?.as_str()).ok();
     }
@@ -236,8 +236,8 @@ fn extract_og_description(html: &str) -> Option<String> {
 }
 
 fn extract_og_image(html: &str) -> Vec<String> {
-    if let Some(re) =
-        regex::Regex::new(r#"<meta[^>]*property="og:image"[^>]*content="([^"]*)"[^>]*/?>"#).ok()
+    if let Ok(re) =
+        regex::Regex::new(r#"<meta[^>]*property="og:image"[^>]*content="([^"]*)"[^>]*/?>"#)
     {
         re.captures_iter(html)
             .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
@@ -247,77 +247,48 @@ fn extract_og_image(html: &str) -> Vec<String> {
     }
 }
 
+fn note_to_pagedata(note: &serde_json::Value) -> PageData {
+    PageData {
+        title: note
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        description: note
+            .get("desc")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        images: note
+            .get("imageList")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|i| {
+                        i.get("url")
+                            .and_then(|u| u.as_str())
+                            .or_else(|| {
+                                i.get("infoList")
+                                    .and_then(|il| il.as_array())
+                                    .and_then(|il| il.last())
+                                    .and_then(|l| l.get("url").and_then(|u| u.as_str()))
+                            })
+                            .map(String::from)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        has_video: note.get("video").is_some_and(|v| !v.is_null()),
+    }
+}
+
 fn parse_note_from_state(state: &serde_json::Value) -> Result<PageData, ()> {
     if let Some(note) = state.get("note") {
-        return Ok(PageData {
-            title: note
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            description: note
-                .get("desc")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            images: note
-                .get("imageList")
-                .and_then(|v| v.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|i| {
-                            i.get("url")
-                                .and_then(|u| u.as_str())
-                                .or_else(|| {
-                                    i.get("infoList")
-                                        .and_then(|il| il.as_array())
-                                        .and_then(|il| il.last())
-                                        .and_then(|l| l.get("url").and_then(|u| u.as_str()))
-                                })
-                                .map(String::from)
-                        })
-                        .collect()
-                })
-                .unwrap_or_default(),
-            has_video: note.get("video").map_or(false, |v| !v.is_null()),
-        });
+        return Ok(note_to_pagedata(note));
     }
     for key in &["noteDetail", "noteData", "currentNote"] {
         if let Some(note) = state.get(*key) {
-            return Ok(PageData {
-                title: note
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                description: note
-                    .get("desc")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                images: note
-                    .get("imageList")
-                    .and_then(|v| v.as_array())
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|i| {
-                                i.get("url")
-                                    .and_then(|u| u.as_str())
-                                    .or_else(|| {
-                                        i.get("infoList")
-                                            .and_then(|il| il.as_array())
-                                            .and_then(|il| il.last())
-                                            .and_then(|l| {
-                                                l.get("url").and_then(|u| u.as_str())
-                                            })
-                                    })
-                                    .map(String::from)
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                has_video: note.get("video").map_or(false, |v| !v.is_null()),
-            });
+            return Ok(note_to_pagedata(note));
         }
     }
     Err(())

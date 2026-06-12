@@ -167,7 +167,7 @@ fn extract_audio(video_path: &Path, output_dir: &Path) -> Result<Option<PathBuf>
         }
         if let Ok(audio_buf) = decoder.decode(&packet) {
             if out_spec.is_none() {
-                out_spec = Some(audio_buf.spec().clone());
+                out_spec = Some(*audio_buf.spec());
             }
             let n_ch = audio_buf.spec().channels.count();
             append_audio_frames(audio_buf, n_ch, &mut samples);

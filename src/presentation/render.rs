@@ -16,11 +16,16 @@ pub fn render_terminal_multi(recipes: &[Recipe]) {
         return render_terminal(&recipes[0]);
     }
 
-    let total = food_recipes.len();
-    println!("\n  {} {}", "📋", format!("合集共 {} 个菜谱", total).green().bold());
+    let total = recipes.len();
+    let food_total = food_recipes.len();
+    if food_total < total {
+        println!("\n  📋 {} (共{}个，其中{}个识别为美食)", format!("合集共 {} 个菜谱", total).green().bold(), total, food_total);
+    } else {
+        println!("\n  📋 {}", format!("合集共 {} 个菜谱", total).green().bold());
+    }
     for (i, recipe) in food_recipes.iter().enumerate() {
         println!("\n  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!("  {} {} / {}", "📖", format!("第{}个", i + 1).bold(), total);
+        println!("  📖 {} / {}", format!("第{}个", i + 1).bold(), total);
         render_terminal(recipe);
     }
 }
@@ -33,16 +38,13 @@ pub fn render_terminal(recipe: &Recipe) {
     }
 
     println!();
-    println!("  {} {}", "🍖".to_string(), recipe.name.green().bold());
-    let mut time_parts = Vec::new();
+    println!("  🍖 {}", recipe.name.green().bold());
     if let Some(ref t) = recipe.total_time {
-        time_parts.push(format!("⏱ {}", t.yellow()));
+        println!("  ⏱ {}", t.yellow());
     }
-    time_parts.push("👨‍👩‍👧‍👦 约2-3人份".to_string());
-    println!("  {}", time_parts.join(" ｜"));
 
     if !recipe.ingredients.is_empty() {
-        println!("\n  {} {}", "🥩".to_string(), "食材".bold());
+        println!("\n  🥩 {}", "食材".bold());
         for ing in &recipe.ingredients {
             let mut parts = vec![format!("· {}", ing.name.cyan())];
             if let Some(ref amt) = ing.amount {
@@ -56,7 +58,7 @@ pub fn render_terminal(recipe: &Recipe) {
     }
 
     if !recipe.seasonings.is_empty() {
-        println!("\n  {} {}", "🧂".to_string(), "调料".bold());
+        println!("\n  🧂 {}", "调料".bold());
         let items: Vec<String> = recipe.seasonings.iter().map(|s| {
             let mut line = s.name.clone();
             if let Some(ref amt) = s.amount {
@@ -71,12 +73,12 @@ pub fn render_terminal(recipe: &Recipe) {
     }
 
     if !recipe.equipment.is_empty() {
-        println!("\n  {} {}", "🔧".to_string(), "器具".bold());
+        println!("\n  🔧 {}", "器具".bold());
         println!("    · {}", recipe.equipment.join("、"));
     }
 
     if !recipe.steps.is_empty() {
-        println!("\n  {} {}", "📝".to_string(), "步骤".bold());
+        println!("\n  📝 {}", "步骤".bold());
         for (i, step) in recipe.steps.iter().enumerate() {
             let fallback = format!("{}.", i + 1);
             let num = crate::STEP_NUMS.get(i).copied().unwrap_or(&fallback);
@@ -95,7 +97,7 @@ pub fn render_terminal(recipe: &Recipe) {
         let tips_short: Vec<String> = recipe.tips.iter()
             .map(|t| t.trim_end_matches('。').to_string())
             .collect();
-        println!("\n  {} {}", "💡".to_string(), "小贴士".bold());
+        println!("\n  💡 {}", "小贴士".bold());
         println!("    {}", tips_short.join(" · "));
     }
 }

@@ -31,7 +31,17 @@ pub fn which(name: &str) -> Option<String> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     for dir in std::env::split_paths(&path) {
         let candidate = dir.join(name);
-        if candidate.exists() {
+        if candidate.is_file() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(meta) = std::fs::metadata(&candidate) {
+                    if meta.permissions().mode() & 0o111 != 0 {
+                        return Some(candidate.to_string_lossy().to_string());
+                    }
+                }
+            }
+            #[cfg(not(unix))]
             return Some(candidate.to_string_lossy().to_string());
         }
     }

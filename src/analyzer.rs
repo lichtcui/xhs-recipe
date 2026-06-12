@@ -22,6 +22,12 @@ impl RealHttpClient {
     }
 }
 
+impl Default for RealHttpClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HttpClient for RealHttpClient {
     async fn post_json(&self, url: &str, api_key: &str, body: Value) -> Result<Value, AnalyzerError> {
         let response = self.inner
@@ -50,7 +56,7 @@ impl HttpClient for RealHttpClient {
 /// Shared static client, used in production.
 pub(crate) fn shared_client() -> &'static RealHttpClient {
     static CLIENT: OnceLock<RealHttpClient> = OnceLock::new();
-    CLIENT.get_or_init(|| RealHttpClient::new())
+    CLIENT.get_or_init(RealHttpClient::new)
 }
 
 // ── Extract Recipe ──────────────────────────────────────────────
@@ -549,9 +555,9 @@ fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
 fn extract_balanced_json(s: &str) -> Option<String> {
     let s = s.trim();
     // Find the first structural character
-    let start = s.find(|c| c == '{' || c == '[')?;
+    let start = s.find(['{', '['])?;
     let target = &s[start..];
-    let mut chars = target.char_indices().peekable();
+    let chars = target.char_indices().peekable();
     let mut in_string = false;
     let mut escape = false;
     let mut depth_obj: i32 = 0;
@@ -559,7 +565,7 @@ fn extract_balanced_json(s: &str) -> Option<String> {
     let mut start_idx = 0;
     let mut end_idx = 0;
 
-    while let Some((i, ch)) = chars.next() {
+    for (i, ch) in chars {
         if escape {
             escape = false;
             continue;
@@ -583,13 +589,11 @@ fn extract_balanced_json(s: &str) -> Option<String> {
                 }
                 depth_obj += 1;
             }
-            '}' => {
-                depth_obj -= 1;
-                if depth_obj == 0 && depth_arr == 0 {
-                    end_idx = i + 1; // include the closing brace
-                    break;
-                }
+            '}' if depth_obj == 1 && depth_arr == 0 => {
+                end_idx = i + 1; // include the closing brace
+                break;
             }
+            '}' => depth_obj -= 1,
             '[' => depth_arr += 1,
             ']' => depth_arr -= 1,
             _ => {}
@@ -705,10 +709,8 @@ fn close_unclosed(s: &str) -> String {
         match ch {
             '{' => stack.push('}'),
             '[' => stack.push(']'),
-            '}' | ']' => {
-                if stack.last() == Some(&ch) {
-                    stack.pop();
-                }
+            '}' | ']' if stack.last() == Some(&ch) => {
+                stack.pop();
             }
             _ => {}
         }
@@ -803,8 +805,7 @@ fn escape_unescaped_quotes(s: &str) -> String {
                 // Look ahead past whitespace to see if this is structural
                 let is_structural = chars
                     .clone()
-                    .skip_while(|(_, c)| c.is_ascii_whitespace())
-                    .next()
+                    .find(|(_, c)| !c.is_ascii_whitespace())
                     .map(|(_, c)| matches!(c, ',' | '}' | ']' | ':'))
                     .unwrap_or(true); // end of input = structural (truncation)
 

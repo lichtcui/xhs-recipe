@@ -26,29 +26,31 @@ impl LocalStorage {
         Self { dir }
     }
 
+}
+
+impl Default for LocalStorage {
     /// Default storage location (`~/.xhs-recipe/recipes/`).
-    pub fn default() -> Self {
+    fn default() -> Self {
         Self {
             dir: crate::home_dir().join(".xhs-recipe").join("recipes"),
         }
-    }
-
-    fn recipe_path(&self, id: &str) -> PathBuf {
-        self.dir.join(format!("{id}.json"))
     }
 }
 
 // ── ID generation ──────────────────────────────────────────────────
 
 fn generate_id(source_url: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     let hash = source_url
         .bytes()
         .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
-    format!("{ts:016x}{hash:016x}")
+    format!("{ts:016x}{hash:016x}{seq:04x}")
 }
 
 fn now_secs() -> u64 {
@@ -61,6 +63,10 @@ fn now_secs() -> u64 {
 // ── Private helpers ──────────────────────────────────────────────
 
 impl LocalStorage {
+    fn recipe_path(&self, id: &str) -> PathBuf {
+        self.dir.join(format!("{id}.json"))
+    }
+
     /// Scan all stored recipes and return those matching `source_url`.
     async fn find_all_by_source_url(&self, source_url: &str) -> Result<Vec<StoredRecipe>, StorageError> {
         let mut dir = match tokio::fs::read_dir(&self.dir).await {

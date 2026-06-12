@@ -119,15 +119,12 @@ pub async fn login(headless: bool, timeout_secs: u32) -> Result<bool, String> {
             return Ok(false);
         }
 
-        match tab.url().await {
-            Ok(url) => {
-                let url_str = url.to_string();
-                if !url_str.contains("/login") && url_str.contains("/explore") {
-                    // Login successful — redirect happened
-                    break;
-                }
+        if let Ok(url) = tab.url().await {
+            let url_str = url.to_string();
+            if !url_str.contains("/login") && url_str.contains("/explore") {
+                // Login successful — redirect happened
+                break;
             }
-            Err(_) => {}
         }
 
         // Also check for avatar element as login indicator
@@ -145,7 +142,7 @@ pub async fn login(headless: bool, timeout_secs: u32) -> Result<bool, String> {
 
         let elapsed = start.elapsed().as_secs();
         let remaining = timeout_secs - elapsed as u32;
-        if remaining % 10 == 0 {
+        if remaining.is_multiple_of(10) {
             println!("  ⏳ 等待扫码... 还剩 {} 秒", remaining);
         }
     }
