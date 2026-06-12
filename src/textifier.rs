@@ -8,8 +8,8 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-/// Convert RawContent (with optional video) to TextContent.
-pub async fn process(raw: &RawContent, asr_model: &str) -> Result<TextContent, TextifierError> {
+/// Convert RawContent (with optional video/images) to TextContent.
+pub async fn process(raw: &RawContent, asr_model: &str, ocr_images: bool) -> Result<TextContent, TextifierError> {
     let mut text_parts = vec![format!("标题：{}", raw.title)];
     if !raw.text_content.is_empty() {
         text_parts.push(format!("描述：{}", raw.text_content));
@@ -21,8 +21,19 @@ pub async fn process(raw: &RawContent, asr_model: &str) -> Result<TextContent, T
         if !video_text.is_empty() {
             text_parts.push(video_text);
         }
-    } else {
-        println!("  ✓ 无需转写");
+    } else if ocr_images && !raw.image_urls.is_empty() {
+        println!("  ↓ 分析图片文字...");
+        match ocr_post_images(&raw.image_urls).await {
+            Ok(Some(text)) => {
+                text_parts.push(format!("图片文字内容：\n{}", text));
+            }
+            Ok(None) => {
+                println!("  ⚠ 图片未识别出文字");
+            }
+            Err(e) => {
+                println!("  ⚠ 图片 OCR 失败: {}", e);
+            }
+        }
     }
 
     Ok(TextContent {
@@ -506,6 +517,63 @@ fn ocr_all_frames(frame_paths: &[PathBuf]) -> Result<Option<String>, TextifierEr
     Ok(Some(combined))
 }
 
+// ── Post image OCR ─────────────────────────────────────────────────
+
+/// Download post images to a local directory for OCR.
+async fn download_images(urls: &[String], output_dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    let mut paths = Vec::new();
+    for (i, url) in urls.iter().enumerate() {
+        let resp = match client.get(url).send().await {
+            Ok(r) if r.status().is_success() => r,
+            _ => {
+                crate::vprintln!("  ⚠ 图片下载失败: {}", &url[..url.len().min(80)]);
+                continue;
+            }
+        };
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let ext = if bytes.len() > 4 && &bytes[..4] == b"\x89PNG" {
+            "png"
+        } else if bytes.len() > 2 && &bytes[..2] == b"\xff\xd8" {
+            "jpg"
+        } else {
+            "png"
+        };
+        let path = output_dir.join(format!("image_{:04}.{}", i, ext));
+        if std::fs::write(&path, &bytes).is_ok() {
+            let size = bytes.len() as f64 / 1024.0;
+            crate::vprintln!("  ✓ 图片[{}] 已下载 ({:.0} KB)", i, size);
+            paths.push(path);
+        }
+    }
+    paths
+}
+
+/// Download post images and extract text via macOS Vision OCR.
+async fn ocr_post_images(urls: &[String]) -> Result<Option<String>, TextifierError> {
+    let output_dir = tempfile::tempdir()
+        .map_err(|e| TextifierError::OcrFailed(format!("tempdir: {}", e)))?;
+    let dir = output_dir.path().to_path_buf();
+
+    let image_paths = download_images(urls, &dir).await;
+
+    if image_paths.is_empty() {
+        return Ok(None);
+    }
+
+    ocr_all_frames(&image_paths)
+}
+
 /// Check if two OCR results are similar enough to be duplicates.
 fn text_similar(a: &str, b: &str) -> bool {
     if a == b {
@@ -536,9 +604,14 @@ async fn transcribe_video(url: &str, asr_model: &str) -> Result<String, Textifie
         let u = url;
         tokio::task::spawn_blocking(move || download_video(&u, &d)).await
             .map_err(|e| TextifierError::DownloadFailed(format!("task: {}", e)))?
-            .map_err(|e| { println!("  ✗ 视频下载失败: {}", e); e })?
+            .map_err(|e| { println!("  ⚠ 无视频内容: {} (跳过视频处理)", e); e })
+            .ok()
+            .flatten()
     };
-    let video = match video { Some(v) => v, None => return Ok(String::new()) };
+    let video = match video { Some(v) => v, None => {
+        println!("  ⚠ 该笔记没有实际视频，使用图文内容继续分析");
+        return Ok(String::new());
+    }};
 
     // Step 2: Run ASR (audio) and OCR (frames) in parallel
     let video_asr = video.clone();
@@ -604,7 +677,7 @@ mod tests {
             image_urls: vec![], has_video: false, video_url: None,
             source: "test".into(), source_url: "https://example.com".into(),
         };
-        let result = rt.block_on(process(&raw, "qwen3-asr-0.6b")).unwrap();
+        let result = rt.block_on(process(&raw, "qwen3-asr-0.6b", false)).unwrap();
         assert!(result.full_text.contains("测试标题"));
         assert!(!result.full_text.contains("视频口述内容"));
     }

@@ -114,7 +114,7 @@ async fn extract_data(
             return Ok(parsed);
         }
     }
-    const DOM_EXTRACT_JS: &str = r#"(()=>{const r={title:'',description:'',images:[],hasVideo:false};const note=document.querySelector('#noteContainer')||document.querySelector('[class*="note"]');const og=document.querySelector('meta[property="og:title"]');if(og)r.title=og.getAttribute('content')||'';const od=document.querySelector('meta[property="og:description"]');if(od)r.description=od.getAttribute('content')||'';if(!r.title){const scope=note||document;for(const s of['#detail-title','.title','h1.title','[class*="title"]']){const e=scope.querySelector(s);if(e&&e.innerText){r.title=e.innerText.trim();break;}}}const scope=note||document;const seen=new Set();const com=scope.querySelector('.comments-el');scope.querySelectorAll('img').forEach(i=>{if(com&&com.contains(i))return;const src=i.getAttribute('src')||i.getAttribute('data-src')||'';if(src&&src.includes('https://')&&!seen.has(src)&&!src.includes('avatar')&&!src.includes('icon')&&!src.includes('emoji')){r.images.push(src);seen.add(src);}});r.hasVideo=!!(scope.querySelector('video')||scope.querySelector('[class*="player"]'));return JSON.stringify(r);})()"#;
+    const DOM_EXTRACT_JS: &str = r#"(()=>{const r={title:'',description:'',images:[],hasVideo:false};const note=document.querySelector('#noteContainer')||document.querySelector('[class*="note"]');const og=document.querySelector('meta[property="og:title"]');if(og)r.title=og.getAttribute('content')||'';const od=document.querySelector('meta[property="og:description"]');if(od)r.description=od.getAttribute('content')||'';if(!r.title){const scope=note||document;for(const s of['#detail-title','.title','h1.title','[class*="title"]']){const e=scope.querySelector(s);if(e&&e.innerText){r.title=e.innerText.trim();break;}}}const scope=note||document;const seen=new Set();const com=scope.querySelector('.comments-el');scope.querySelectorAll('img').forEach(i=>{if(com&&com.contains(i))return;const src=i.getAttribute('src')||i.getAttribute('data-src')||'';if(src&&src.includes('https://')&&!seen.has(src)&&!src.includes('avatar')&&!src.includes('icon')&&!src.includes('emoji')){r.images.push(src);seen.add(src);}});r.hasVideo=!!scope.querySelector('video');return JSON.stringify(r);})()"#;
 
     let dom_json: String = tab
         .evaluate_main(DOM_EXTRACT_JS)
@@ -279,8 +279,7 @@ fn parse_note_from_state(state: &serde_json::Value) -> Result<PageData, ()> {
                         .collect()
                 })
                 .unwrap_or_default(),
-            has_video: note.get("type").and_then(|v| v.as_str()) == Some("video")
-                || note.get("video").is_some(),
+            has_video: note.get("video").map_or(false, |v| !v.is_null()),
         });
     }
     for key in &["noteDetail", "noteData", "currentNote"] {
@@ -317,8 +316,7 @@ fn parse_note_from_state(state: &serde_json::Value) -> Result<PageData, ()> {
                             .collect()
                     })
                     .unwrap_or_default(),
-                has_video: note.get("type").and_then(|v| v.as_str()) == Some("video")
-                    || note.get("video").is_some(),
+                has_video: note.get("video").map_or(false, |v| !v.is_null()),
             });
         }
     }
@@ -357,9 +355,13 @@ mod tests {
 
     #[test]
     fn test_parse_note_from_state() {
-        let s = serde_json::json!({"note":{"title":"红烧肉","desc":"做法","imageList":[{"url":"https://x.com/1.jpg"}],"type":"video"}});
+        let s = serde_json::json!({"note":{"title":"红烧肉","desc":"做法","imageList":[{"url":"https://x.com/1.jpg"}],"video":{"id":"xxx"},"type":"video"}});
         let p = parse_note_from_state(&s).unwrap();
         assert_eq!(p.title, "红烧肉");
         assert!(p.has_video);
+        // image-only post with wrong type="video" should NOT have has_video
+        let s2 = serde_json::json!({"note":{"title":"菜饭","desc":"做法","imageList":[{"url":"https://x.com/1.jpg"},{"url":"https://x.com/2.jpg"}],"type":"video"}});
+        let p2 = parse_note_from_state(&s2).unwrap();
+        assert!(!p2.has_video);
     }
 }

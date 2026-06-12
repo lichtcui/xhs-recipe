@@ -33,19 +33,14 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Recipe, PipelineError> 
             }
         }
 
-        // Step 2: Textify
-        let text = crate::textifier::process(&raw, opts.asr_model).await?;
+        // Step 2: Textify (includes OCR for image posts when send_images is true)
+        let text = crate::textifier::process(&raw, opts.asr_model, opts.send_images).await?;
 
-        // Step 3: Analyze
-        let image_urls: &[String] = if opts.send_images {
-            &raw.image_urls
-        } else {
-            &[]
-        };
+        // Step 3: Analyze (images already OCR'd into text, no need to pass separately)
         let mut recipe = crate::analyzer::extract_recipe(
             crate::analyzer::shared_client(),
             &text.full_text,
-            image_urls,
+            &[],  // images are already OCR'd into text_content
             opts.llm_model,
             opts.api_key,
         )
