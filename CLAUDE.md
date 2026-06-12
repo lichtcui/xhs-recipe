@@ -61,12 +61,13 @@ cargo run -- extract <url>
 
 ## Data Flow
 
-1. **`pipeline.extract()`** 接收 URL，调用 `sources.fetch(url)` 路由到对应适配器
-2. **Source Adapter**（如 `sources/xiaohongshu/`）：zendriver-rs 浏览器自动化抓取页面，返回平台无关的 `RawContent`
-3. **`textifier.process()`**：视频 → yt-dlp + ffmpeg + Qwen3-ASR 转写，返回 `TextContent`
-4. **`analyzer::extract_recipe()`**：纯文本 + 可选图片 → LLM function calling → `Recipe` 模型
-5. **`storage`**：提取后自动保存到 `~/.xhs-recipe/recipes/`（`Storage` trait，未来可替换为数据库）
-6. **`presentation`**：终端 rich 渲染 / 保存 `.md` 或 `.json`
+1. **`main.rs`** 先查本地缓存（`Storage::get_by_source_url`），命中则直接显示并跳过后续步骤
+2. **`pipeline.extract()`** 接收 URL，调用 `sources.fetch(url)` 路由到对应适配器
+3. **Source Adapter**（如 `sources/xiaohongshu/`）：zendriver-rs 浏览器自动化抓取页面，返回平台无关的 `RawContent`
+4. **`textifier.process()`**：视频 → yt-dlp + ffmpeg + Qwen3-ASR 转写，返回 `TextContent`
+5. **`analyzer::extract_recipe()`**：纯文本 + 可选图片 → LLM function calling → `Recipe` 模型
+6. **`storage`**：提取后自动保存到 `~/.xhs-recipe/recipes/`。同一 URL 重复提取时自动去重，跳过保存
+7. **`presentation`**：终端 rich 渲染 / 保存 `.md` 或 `.json`
 
 ## Key Design Decisions
 
@@ -77,12 +78,13 @@ cargo run -- extract <url>
 - **Image selection**：仅发送最多 3 张图片给 LLM（`--images`/`--no-images` 控制）
 - **Fallback chain for scraping**：`__NEXT_DATA__` → DOM selectors → API response interception
 - **CLI uses clap** for argument parsing
+- **Dedup & cache**：同一 URL 重复提取时先查本地缓存，命中则跳过 pipeline 直接显示；`save()` 自动去重不产生重复条目
 
 ## Test
 
 ```bash
 # Run all tests
-cargo test                   # 78 lib + 11 bin + 4 integration = 93 tests
+cargo test                   # 79 lib + 11 bin + 4 integration = 94 tests
 cargo test --lib             # Library tests only
 cargo test --bin xhs-recipe  # Binary (CLI) tests only
 
@@ -111,7 +113,7 @@ src/
 │       ├── scraper.rs    # Scrape fallback chain
 │       └── url.rs        # URL parsing
 ├── storage/
-│   ├── mod.rs            # Storage trait (save/list/get/delete)
+│   ├── mod.rs            # Storage trait (save/list/get/get_by_source_url/delete)
 │   └── local.rs          # LocalStorage: ~/.xhs-recipe/recipes/*.json
 └── presentation/
     ├── mod.rs
