@@ -11,7 +11,6 @@
 
 ## 前置依赖
 
-- [ffmpeg](https://ffmpeg.org/) — `brew install ffmpeg`
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) — `brew install yt-dlp`
 - [Qwen3-ASR](https://github.com/Qwen/Qwen3-ASR)（用于视频转写）：
   ```bash
@@ -92,7 +91,7 @@ URL → Source Adapter → Textifier → Analyzer → Presentation
 ```
 
 1. **Source Adapter** — 浏览器自动化抓取小红书页面，提取文字和图片
-2. **Textifier** — 通过 yt-dlp 下载视频，提取音频，使用 Qwen3-ASR 转写
+2. **Textifier** — 通过 yt-dlp 下载视频，symphonia（纯 Rust）提取音频，使用 Qwen3-ASR 转写
 3. **Analyzer** — 将文字（和可选图片）发送给 DeepSeek API，通过 function calling 返回结构化 `Recipe`
 4. **Presentation** — 渲染到终端、Markdown 或 JSON
 
@@ -104,7 +103,7 @@ src/
 ├── lib.rs                # 库根模块
 ├── models.rs             # 数据模型（serde）
 ├── pipeline.rs           # 编排：fetch → textify → analyze
-├── textifier.rs          # yt-dlp + ffmpeg + ASR
+├── textifier.rs          # yt-dlp + symphonia + ASR
 ├── analyzer.rs           # LLM function calling
 ├── sources/
 │   ├── xiaohongshu/      # 小红书适配器

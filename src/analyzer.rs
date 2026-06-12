@@ -106,7 +106,7 @@ pub async fn extract_recipe(
     } else {
         String::new()
     };
-    println!("  → 发送给 {} 分析... ({} 字{})", model_label, text.len(), img_count);
+    println!("  → 发送给 {} 分析... ({} 字, {} 字节{})", model_label, text.chars().count(), text.len(), img_count);
 
     let request_body = json!({
         "model": model,
@@ -337,7 +337,7 @@ fn parse_response(response: Value) -> Result<Recipe, AnalyzerError> {
     Err(AnalyzerError::ParseError("no structured data in response".into()))
 }
 
-/// Repair common LLM JSON errors: truncation, trailing commas, unclosed brackets.
+/// Repair common LLM JSON errors: truncation, trailing commas, unclosed brackets, missing commas.
 fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
     let trimmed = raw.trim();
 
@@ -358,14 +358,35 @@ fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
         }
     }
 
-    // Common fix 2: close unclosed strings, arrays, objects
+    // Common fix 2: insert missing commas between adjacent structural tokens
+    // e.g. `}{` `}[` `]{` `][` — common when LLM omits commas in arrays
+    let with_commas = add_missing_commas(trimmed);
+    if with_commas != trimmed {
+        if let Ok(v) = serde_json::from_str(&with_commas) {
+            println!("  ✓ 修复缺失逗号成功");
+            return Ok(v);
+        }
+    }
+
+    // Also try with_commas + trailing comma fix together
+    if let Some(ref s) = fixed {
+        let merged = add_missing_commas(s);
+        if merged != *s {
+            if let Ok(v) = serde_json::from_str(&merged) {
+                println!("  ✓ 修复 JSON 成功 (trailing comma + missing comma)");
+                return Ok(v);
+            }
+        }
+    }
+
+    // Common fix 3: close unclosed strings, arrays, objects
     let repaired = close_unclosed(trimmed);
     if let Ok(v) = serde_json::from_str(&repaired) {
         println!("  ✓ 修复未闭合 JSON 成功");
         return Ok(v);
     }
 
-    // One more attempt: remove trailing comma THEN close
+    // Combined: trailing comma THEN close
     if let Some(ref s) = fixed {
         let repaired = close_unclosed(s);
         if let Ok(v) = serde_json::from_str(&repaired) {
@@ -374,8 +395,71 @@ fn repair_json(raw: &str) -> Result<Value, serde_json::Error> {
         }
     }
 
+    // Combined: missing commas THEN close
+    let repaired = close_unclosed(&with_commas);
+    if let Ok(v) = serde_json::from_str(&repaired) {
+        println!("  ✓ 修复 JSON 成功 (missing comma + unclosed)");
+        return Ok(v);
+    }
+
     // Return original error
     serde_json::from_str(trimmed)
+}
+
+/// Insert commas between adjacent structural tokens that are missing them.
+/// Handles patterns like `}{`, `}[`, `]{`, `][` that appear outside strings.
+fn add_missing_commas(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() + 16);
+    let mut in_string = false;
+    let mut escape = false;
+    let mut prev_struct: Option<char> = None; // last non-whitespace structural char
+
+    for ch in s.chars() {
+        if escape {
+            escape = false;
+            result.push(ch);
+            continue;
+        }
+        if ch == '\\' && in_string {
+            escape = true;
+            result.push(ch);
+            continue;
+        }
+        if ch == '"' && !escape {
+            in_string = !in_string;
+            result.push(ch);
+            if !in_string {
+                // When a string closes, update prev_struct
+                prev_struct = Some('"');
+            }
+            continue;
+        }
+        if in_string {
+            result.push(ch);
+            continue;
+        }
+
+        // Skip whitespace outside strings (don't push yet)
+        if ch.is_ascii_whitespace() {
+            result.push(ch);
+            continue;
+        }
+
+        // Check if we need a comma between prev_struct and current char
+        match (prev_struct, ch) {
+            (Some('}'), '{') | (Some('}'), '[') | (Some('}'), '"')
+            | (Some(']'), '{') | (Some(']'), '[') | (Some(']'), '"')
+            | (Some('"'), '{') | (Some('"'), '[') | (Some('"'), '"') => {
+                result.push(',');
+            }
+            _ => {}
+        }
+
+        prev_struct = Some(ch);
+        result.push(ch);
+    }
+
+    result
 }
 
 /// Close unclosed strings, arrays, and objects in truncated JSON.
@@ -979,6 +1063,15 @@ mod tests {
         let result = repair_json(raw).unwrap();
         assert_eq!(result["steps"][0]["title"], "t");
         assert_eq!(result["steps"][0]["content"], "c");
+    }
+
+    #[test]
+    fn test_repair_json_missing_comma() {
+        // Missing comma between objects in array (common LLM error)
+        let raw = r#"{"name":"烤排骨","ingredients":[{"name":"排骨"}{"name":"蒜"}],"is_food":true}"#;
+        let result = repair_json(raw).unwrap();
+        assert_eq!(result["ingredients"][0]["name"], "排骨");
+        assert_eq!(result["ingredients"][1]["name"], "蒜");
     }
 
     #[test]

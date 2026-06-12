@@ -114,7 +114,7 @@ async fn extract_data(
             return Ok(parsed);
         }
     }
-    const DOM_EXTRACT_JS: &str = r#"(()=>{const r={title:'',description:'',images:[],hasVideo:false};const og=document.querySelector('meta[property="og:title"]');if(og)r.title=og.getAttribute('content')||'';const od=document.querySelector('meta[property="og:description"]');if(od)r.description=od.getAttribute('content')||'';if(!r.title){for(const s of['#detail-title','.title','h1.title','[class*="title"]']){const e=document.querySelector(s);if(e&&e.innerText){r.title=e.innerText.trim();break;}}}const seen=new Set();for(const s of['.swiper-slide img','.carousel img','.note-image img']){document.querySelectorAll(s).forEach(i=>{const src=i.getAttribute('src')||i.getAttribute('data-src')||'';if(src&&src.includes('http')&&!seen.has(src)){r.images.push(src);seen.add(src);}});}r.hasVideo=!!document.querySelector('video');return JSON.stringify(r);})()"#;
+    const DOM_EXTRACT_JS: &str = r#"(()=>{const r={title:'',description:'',images:[],hasVideo:false};const note=document.querySelector('#noteContainer')||document.querySelector('[class*="note"]');const og=document.querySelector('meta[property="og:title"]');if(og)r.title=og.getAttribute('content')||'';const od=document.querySelector('meta[property="og:description"]');if(od)r.description=od.getAttribute('content')||'';if(!r.title){const scope=note||document;for(const s of['#detail-title','.title','h1.title','[class*="title"]']){const e=scope.querySelector(s);if(e&&e.innerText){r.title=e.innerText.trim();break;}}}const scope=note||document;const seen=new Set();for(const s of['img']){scope.querySelectorAll(s).forEach(i=>{const src=i.getAttribute('src')||i.getAttribute('data-src')||'';if(src&&src.includes('https://')&&!seen.has(src)&&!src.includes('avatar')&&!src.includes('icon')&&!src.includes('emoji')){r.images.push(src);seen.add(src);}});}r.hasVideo=!!(scope.querySelector('video')||scope.querySelector('[class*="player"]'));return JSON.stringify(r);})()"#;
 
     let dom_json: String = tab
         .evaluate_main(DOM_EXTRACT_JS)
@@ -268,12 +268,19 @@ fn parse_note_from_state(state: &serde_json::Value) -> Result<PageData, ()> {
                         .filter_map(|i| {
                             i.get("url")
                                 .and_then(|u| u.as_str())
+                                .or_else(|| {
+                                    i.get("infoList")
+                                        .and_then(|il| il.as_array())
+                                        .and_then(|il| il.last())
+                                        .and_then(|l| l.get("url").and_then(|u| u.as_str()))
+                                })
                                 .map(String::from)
                         })
                         .collect()
                 })
                 .unwrap_or_default(),
-            has_video: note.get("type").and_then(|v| v.as_str()) == Some("video"),
+            has_video: note.get("type").and_then(|v| v.as_str()) == Some("video")
+                || note.get("video").is_some(),
         });
     }
     for key in &["noteDetail", "noteData", "currentNote"] {

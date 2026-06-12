@@ -18,3 +18,5 @@ clap = { version = "4", features = ["derive"] }
 dotenvy = "0.15"
 thiserror = "2"
 async-trait = "0.1"
+symphonia = { version = "0.5", default-features = false, features = ["isomp4", "aac"] }
+hound = "3"

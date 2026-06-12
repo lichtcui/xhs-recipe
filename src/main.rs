@@ -140,14 +140,6 @@ fn run_setup() {
 
     println!("📦 检查系统依赖...");
 
-    if which("ffmpeg").is_some() {
-        println!("  ✓ ffmpeg 已安装");
-    } else {
-        println!("  ✗ ffmpeg 未安装");
-        println!("    macOS: brew install ffmpeg");
-        missing.push("ffmpeg");
-    }
-
     if which("yt-dlp").is_some() {
         println!("  ✓ yt-dlp 已安装");
     } else {
