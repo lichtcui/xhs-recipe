@@ -1,4 +1,4 @@
-/// Cookie management for Xiaohongshu — save/load/logout.
+/// Cookie management for Xiaohongshu — save/load.
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -56,19 +56,6 @@ pub fn save_cookies(cookies: &[Cookie]) {
         if let Err(e) = std::fs::write(&path, json) {
             eprintln!("  ⚠ 写入 Cookie 文件失败: {}", e);
         }
-    }
-}
-
-// ── Logout ───────────────────────────────────────────────────
-
-/// Clear saved cookies.
-pub async fn logout() {
-    let path = cookie_path();
-    if path.exists() {
-        std::fs::remove_file(&path).ok();
-        println!("✅ Cookie 已清除");
-    } else {
-        println!("ℹ️  没有已保存的 Cookie");
     }
 }
 

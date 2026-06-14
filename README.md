@@ -109,9 +109,6 @@ cargo run -- show <id>
 ### 其他命令
 
 ```bash
-# 清除已保存的 cookie
-cargo run -- logout
-
 # 检查依赖
 cargo run -- setup
 

@@ -30,8 +30,6 @@ enum Command {
     },
     /// 初始化项目环境
     Setup,
-    /// 清除已保存的 Cookie
-    Logout,
     /// 列出本地已保存的菜谱
     List {
         #[arg(short, long, help = "Show all fields including IDs")]
@@ -53,7 +51,6 @@ fn main() {
             run_extract(&url, output.as_deref(), &model, &asr_model, images, timeout);
         }
         Command::Setup => run_setup(),
-        Command::Logout => run_logout(),
         Command::List { verbose } => run_list(verbose),
         Command::Show { id } => run_show(&id),
     }
@@ -211,11 +208,6 @@ fn run_setup() {
     }
 }
 
-fn run_logout() {
-    let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
-    rt.block_on(xhs_recipe::sources::xiaohongshu::auth::logout());
-}
-
 /// 从 URL 提取菜谱并显示/保存
 fn run_list(verbose: bool) {
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
@@ -343,12 +335,6 @@ mod tests {
     fn test_cli_setup() {
         let cli = Cli::try_parse_from(["xhs-recipe", "setup"]).unwrap();
         assert!(matches!(cli.command, Command::Setup));
-    }
-
-    #[test]
-    fn test_cli_logout() {
-        let cli = Cli::try_parse_from(["xhs-recipe", "logout"]).unwrap();
-        assert!(matches!(cli.command, Command::Logout));
     }
 
     #[test]

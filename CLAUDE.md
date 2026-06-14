@@ -32,9 +32,6 @@ qwen-asr download qwen3-asr-0.6b
 #     ~/.cache/qwen-asr/qwen3-asr-0.6b
 #   rm -rf ~/.cache/qwen-asr/qwen3-asr-0.6b/.git
 
-# Clear saved cookies
-cargo run -- logout
-
 # Security audit
 cargo audit
 
