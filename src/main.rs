@@ -176,8 +176,20 @@ fn run_setup() {
     }
 
     println!();
-    println!("📦 安装 Playwright 浏览器...");
-    println!("  运行: playwright install chromium");
+    if which("ffmpeg").is_some() {
+        println!("  ✓ ffmpeg 已安装");
+    } else {
+        println!("  ✗ ffmpeg 未安装（brew install ffmpeg）");
+        missing.push("ffmpeg");
+    }
+
+    if which("swiftc").is_some() {
+        println!("  ✓ swiftc 已安装");
+    } else {
+        println!("  ✗ swiftc 未安装（xcode-select --install）");
+        missing.push("swiftc");
+    }
+
     println!();
     println!("🔒 安全审计...");
     match which("cargo-audit") {
@@ -190,13 +202,29 @@ fn run_setup() {
 
     println!();
     println!("🔑 配置 API Key");
-    if std::env::var("DEEPSEEK_API_KEY").ok().filter(|k| !k.is_empty()).is_some() {
-        println!("  ✓ DEEPSEEK_API_KEY 已设置");
+    let env_key = std::env::var("DEEPSEEK_API_KEY").ok().filter(|k| !k.is_empty());
+    let keychain_key = if cfg!(target_os = "macos") {
+        std::process::Command::new("security")
+            .args(["find-generic-password", "-a", &std::env::var("USER").unwrap_or_default(), "-s", "DEEPSEEK_API_KEY", "-w"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| {
+                let k = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if k.is_empty() { None } else { Some(k) }
+            })
+    } else {
+        None
+    };
+    if env_key.is_some() {
+        println!("  ✓ DEEPSEEK_API_KEY（环境变量）");
+    } else if keychain_key.is_some() {
+        println!("  ✓ DEEPSEEK_API_KEY（macOS 钥匙串）");
     } else {
         println!("  DEEPSEEK_API_KEY 未设置。将密钥添加到 .env 文件：");
         println!("    DEEPSEEK_API_KEY=sk-...");
         println!("  或使用 macOS 钥匙串：");
-        println!("    security add-generic-password -a \"$USER\" -s deepseek-api -w \"sk-...\"");
+        println!("    security add-generic-password -a \"$USER\" -s DEEPSEEK_API_KEY -w \"sk-...\"");
     }
     println!();
 
