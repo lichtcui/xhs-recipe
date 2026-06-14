@@ -80,7 +80,7 @@ async fn scrape_zendriver_inner(browser: &zendriver::Browser, url: &str) -> Resu
     // Short delay for dynamic content
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let (title, desc, images, has_video) = extract_data(&tab).await?;
+    let (title, desc, images, has_video, video_url) = extract_data(&tab).await?;
 
     if title.is_empty() || title == "手机号登录" || title == "登录" || title == "小红书" {
         return Err(SourceError::FetchFailed("需要登录才能查看内容".into()));
@@ -96,7 +96,7 @@ async fn scrape_zendriver_inner(browser: &zendriver::Browser, url: &str) -> Resu
         text_content: desc,
         image_urls: images,
         has_video,
-        video_url: None,
+        video_url,
         source: "xiaohongshu".into(),
         source_url: url.to_string(),
     })
@@ -106,7 +106,7 @@ async fn scrape_zendriver_inner(browser: &zendriver::Browser, url: &str) -> Resu
 
 async fn extract_data(
     tab: &zendriver::Tab,
-) -> Result<(String, String, Vec<String>, bool), SourceError> {
+) -> Result<(String, String, Vec<String>, bool, Option<String>), SourceError> {
     // Try __NEXT_DATA__ via evaluate_main
     let js = r#"(()=>{try{const el=document.getElementById('__NEXT_DATA__');if(el)return el.textContent;}catch(e){}try{if(window.__INITIAL_STATE__)return JSON.stringify(window.__INITIAL_STATE__);}catch(e){}return null;})()"#;
 
@@ -128,20 +128,20 @@ async fn extract_data(
         .map_err(|e| SourceError::FetchFailed(format!("DOM JSON: {}", e)))?;
 
     if !data.title.is_empty() {
-        return Ok((data.title, data.description, data.images, data.has_video));
+        return Ok((data.title, data.description, data.images, data.has_video, data.video_url));
     }
 
-    Ok((String::new(), String::new(), vec![], false))
+    Ok((String::new(), String::new(), vec![], false, None))
 }
 
-fn parse_next_data(json_str: &str) -> Option<(String, String, Vec<String>, bool)> {
+fn parse_next_data(json_str: &str) -> Option<(String, String, Vec<String>, bool, Option<String>)> {
     if json_str.is_empty() || json_str == "null" || json_str == "undefined" {
         return None;
     }
     let val: serde_json::Value = serde_json::from_str(json_str).ok()?;
     parse_note_from_state(&val)
         .ok()
-        .map(|pd| (pd.title, pd.description, pd.images, pd.has_video))
+        .map(|pd| (pd.title, pd.description, pd.images, pd.has_video, pd.video_url))
 }
 
 // ── 2. reqwest direct HTTP (fallback) ────────────────────────────────
@@ -190,7 +190,7 @@ async fn scrape_http(url: &str) -> Result<RawContent, SourceError> {
                     text_content: parsed.description,
                     image_urls: parsed.images,
                     has_video: parsed.has_video,
-                    video_url: None,
+                    video_url: parsed.video_url,
                     source: "xiaohongshu".into(),
                     source_url: url.to_string(),
                 });
@@ -294,6 +294,24 @@ fn note_to_pagedata(note: &serde_json::Value) -> PageData {
             })
             .unwrap_or_default(),
         has_video: note.get("video").is_some_and(|v| !v.is_null()),
+        video_url: note
+            .get("video")
+            .and_then(|v| v.get("media"))
+            .and_then(|m| m.get("stream"))
+            .and_then(|s| {
+                // Prefer h264 master_url, fallback to h265
+                s.get("h264")
+                    .and_then(|a| a.as_array())
+                    .and_then(|a| a.first())
+                    .and_then(|e| e.get("master_url").and_then(|u| u.as_str()))
+                    .or_else(|| {
+                        s.get("h265")
+                            .and_then(|a| a.as_array())
+                            .and_then(|a| a.first())
+                            .and_then(|e| e.get("master_url").and_then(|u| u.as_str()))
+                    })
+            })
+            .map(String::from),
     }
 }
 
@@ -316,6 +334,8 @@ struct PageData {
     description: String,
     images: Vec<String>,
     has_video: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    video_url: Option<String>,
 }
 
 #[cfg(test)]

@@ -14,7 +14,6 @@
 
 ## 前置依赖
 
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — `brew install yt-dlp`
 - [ffmpeg](https://ffmpeg.org/) — `brew install ffmpeg`
 - [Qwen3-ASR](https://github.com/Qwen/Qwen3-ASR)（用于视频转写）：
   ```bash
@@ -130,7 +129,7 @@ URL → Source Adapter → Textifier → Analyzer → Presentation
 ```
 
 1. **Source Adapter** — 浏览器自动化抓取小红书页面，提取文字和图片
-2. **Textifier** — 视频 → yt-dlp + symphonia + Qwen3-ASR 转写 + ffmpeg + macOS Vision 帧 OCR；图文笔记 → macOS Vision OCR
+2. **Textifier** — 视频 → reqwest 下载 + symphonia + Qwen3-ASR 转写 + ffmpeg + macOS Vision 帧 OCR；图文笔记 → macOS Vision OCR
 3. **Analyzer** — OCR 文字 → DeepSeek API function calling → `Recipe` 模型
 4. **Storage** — 自动保存到 `~/.xhs-recipe/recipes/`，同一 URL 重复提取自动去重
 5. **Presentation** — 渲染到终端、Markdown 或 JSON
@@ -143,7 +142,7 @@ src/
 ├── lib.rs                # 库根模块
 ├── models.rs             # 数据模型（serde）
 ├── pipeline.rs           # 编排：fetch → textify → analyze
-├── textifier.rs          # yt-dlp + symphonia + Qwen3-ASR + macOS Vision OCR
+├── textifier.rs          # reqwest + symphonia + Qwen3-ASR + macOS Vision OCR
 ├── analyzer.rs           # LLM function calling (DeepSeek)
 ├── sources/
 │   ├── base.rs           # URL 路由 & 域检查

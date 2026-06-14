@@ -18,10 +18,17 @@ pub async fn process(raw: &RawContent, asr_model: &str, ocr_images: bool) -> Res
     let mut image_texts = Vec::new();
 
     if raw.has_video {
-        println!("  ↓ 下载并分析视频...");
-        let video_text = transcribe_video(&raw.source_url, asr_model).await?;
-        if !video_text.is_empty() {
-            text_parts.push(video_text);
+        match &raw.video_url {
+            Some(url) => {
+                println!("  ↓ 下载并分析视频...");
+                let video_text = transcribe_video(url, asr_model).await?;
+                if !video_text.is_empty() {
+                    text_parts.push(video_text);
+                }
+            }
+            None => {
+                println!("  ⚠ 未提取到视频直链，跳过视频处理");
+            }
         }
     } else if ocr_images && !raw.image_urls.is_empty() {
         println!("  ↓ 分析图片文字...");
@@ -52,8 +59,6 @@ pub async fn process(raw: &RawContent, asr_model: &str, ocr_images: bool) -> Res
 
 #[derive(Debug, thiserror::Error)]
 pub enum TextifierError {
-    #[error("yt-dlp not found")]
-    YtDlpNotFound,
     #[error("qwen-asr not found (run: cargo install qwen-asr-cli)")]
     QwenAsrNotFound,
     #[error("download failed: {0}")]
@@ -64,58 +69,54 @@ pub enum TextifierError {
     OcrFailed(String),
 }
 
-// ── Video download (yt-dlp) ───────────────────────────────────────
+// ── Video download (reqwest, no yt-dlp) ──────────────────────────────
 
-fn find_yt_dlp() -> Result<String, TextifierError> {
-    if let Some(path) = crate::which("yt-dlp") {
-        return Ok(path);
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            let sibling = parent.join("yt-dlp");
-            if sibling.exists() {
-                return Ok(sibling.to_string_lossy().to_string());
-            }
-        }
-    }
-    Err(TextifierError::YtDlpNotFound)
+fn video_download_client() -> reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+            .build()
+            .expect("reqwest client build")
+    }).clone()
 }
 
-fn download_video(url: &str, output_dir: &Path) -> Result<Option<PathBuf>, TextifierError> {
-    let yt_dlp = find_yt_dlp()?;
-    let template = output_dir.join("video.%(ext)s");
-    let template_str = template.to_string_lossy().to_string();
+async fn download_video(url: &str, output_dir: &Path) -> Result<Option<PathBuf>, TextifierError> {
+    let client = video_download_client();
+    let output_path = output_dir.join("video.mp4");
 
-    let result = Command::new(&yt_dlp)
-        .args([
-            "--quiet", "--no-warnings", "--no-playlist",
-            "-f", "best[ext=mp4]/best",
-            "-o", &template_str, "--", url,
-        ])
-        .output()
-        .map_err(|e| TextifierError::DownloadFailed(format!("yt-dlp exec error: {}", e)))?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| TextifierError::DownloadFailed(format!("视频下载请求失败: {}", e)))?;
 
-    if !result.status.success() {
-        let stderr = String::from_utf8_lossy(&result.stderr);
-        return Err(TextifierError::DownloadFailed(stderr.trim().to_string()));
+    if !response.status().is_success() {
+        return Err(TextifierError::DownloadFailed(
+            format!("视频下载 HTTP {}", response.status()),
+        ));
     }
 
-    for entry in std::fs::read_dir(output_dir).map_err(|e| {
-        TextifierError::DownloadFailed(format!("cannot read output dir: {}", e))
-    })? {
-        let entry = entry.map_err(|e| TextifierError::DownloadFailed(format!("read entry: {}", e)))?;
-        let path = entry.path();
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if matches!(ext, "mp4" | "webm" | "mkv") {
-            let size = path.metadata().map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
-            let fname = path.file_name().unwrap_or_default().to_string_lossy();
-            crate::vprintln!("  ✓ 视频文件: {} ({:.1} MB)", fname, size);
-            return Ok(Some(path));
-        }
+    let total = response.content_length().unwrap_or(0);
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| TextifierError::DownloadFailed(format!("读取视频响应: {}", e)))?;
+
+    tokio::fs::write(&output_path, &bytes)
+        .await
+        .map_err(|e| TextifierError::DownloadFailed(format!("保存视频文件: {}", e)))?;
+
+    let size = bytes.len() as f64 / 1_048_576.0;
+    let total_mb = total as f64 / 1_048_576.0;
+    if total > 0 {
+        crate::vprintln!("  ✓ 视频已下载 ({:.1} MB / {:.1} MB)", size, total_mb);
+    } else {
+        crate::vprintln!("  ✓ 视频已下载 ({:.1} MB)", size);
     }
 
-    crate::vprintln!("  ✗ 未找到下载的视频文件");
-    Ok(None)
+    Ok(Some(output_path))
 }
 
 // ── Audio extraction (symphonia) ─────────────────────────────────
@@ -423,69 +424,127 @@ fn ensure_ocr_helper() -> Result<String, TextifierError> {
     Ok(binary_path.to_string_lossy().to_string())
 }
 
-/// Extract frames from video at regular intervals using ffmpeg.
-fn extract_frames(video_path: &Path, output_dir: &Path) -> Result<Vec<PathBuf>, TextifierError> {
-    let ffmpeg = crate::which("ffmpeg")
-        .ok_or_else(|| TextifierError::OcrFailed("ffmpeg not found (brew install ffmpeg)".into()))?;
+// ── Video Frame OCR (AVFoundation + Vision) ────────────────────
 
-    let output_pattern = output_dir.join("frame_%04d.png");
+/// Source code for the macOS video OCR helper (frame extraction + OCR in one step).
+const VIDEO_OCR_HELPER_SOURCE: &str = r#"import Vision
+import AVFoundation
+import Foundation
 
-    let result = Command::new(&ffmpeg)
-        .args([
-            "-i",
-            &video_path.to_string_lossy(),
-            "-vf", "fps=1/3",
-            "-q:v", "2",
-            "-y",
-            &output_pattern.to_string_lossy(),
-        ])
-        .output()
-        .map_err(|e| TextifierError::OcrFailed(format!("ffmpeg exec error: {}", e)))?;
+let arguments = CommandLine.arguments
+guard arguments.count > 1 else { exit(0) }
+let videoPath = arguments[1]
 
-    if !result.status.success() {
-        let stderr = String::from_utf8_lossy(&result.stderr);
-        return Err(TextifierError::OcrFailed(format!("ffmpeg error: {}", stderr.trim())));
-    }
+let videoURL = URL(fileURLWithPath: videoPath)
+let asset = AVAsset(url: videoURL)
 
-    let mut frames: Vec<PathBuf> = std::fs::read_dir(output_dir)
-        .map_err(|e| TextifierError::OcrFailed(format!("read dir: {}", e)))?
-        .filter_map(|entry| match entry {
-            Ok(e) => Some(e),
-            Err(e) => {
-                eprintln!("  ⚠ 读取帧文件失败: {}", e);
-                None
-            }
-        })
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("png"))
-        .collect();
+let generator = AVAssetImageGenerator(asset: asset)
+generator.appliesPreferredTrackTransform = true
+generator.requestedTimeToleranceAfter = .zero
+generator.requestedTimeToleranceBefore = .zero
 
-    frames.sort();
+let durationSeconds = CMTimeGetSeconds(asset.duration)
+guard durationSeconds > 0 else { exit(0) }
 
-    if frames.is_empty() {
-        crate::vprintln!("  ⚠ 未提取到视频帧");
-        return Err(TextifierError::OcrFailed("no frames extracted".into()));
-    }
-
-    Ok(frames)
+var sampleTimes: [CMTime] = []
+var current: Double = 0
+while current < durationSeconds {
+    sampleTimes.append(CMTime(seconds: current, preferredTimescale: 600))
+    current += 3
 }
 
-/// Run OCR on all frames using the macOS Vision framework through the compiled helper.
-/// Returns deduplicated text from all frames.
-fn ocr_all_frames(frame_paths: &[PathBuf]) -> Result<Option<String>, TextifierError> {
-    let helper = ensure_ocr_helper()?;
+let request = VNRecognizeTextRequest()
+request.recognitionLanguages = ["zh-Hans", "en-US"]
+request.recognitionLevel = .accurate
+
+for time in sampleTimes {
+    let cgImage: CGImage
+    do {
+        cgImage = try generator.copyCGImage(at: time, actualTime: nil)
+    } catch {
+        print("---FRAME_END---")
+        continue
+    }
+
+    let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+    do {
+        try handler.perform([request])
+    } catch {
+        print("---FRAME_END---")
+        continue
+    }
+
+    guard let observations = request.results, !observations.isEmpty else {
+        print("---FRAME_END---")
+        continue
+    }
+
+    let sorted = observations.sorted { a, b in
+        let aTop = a.boundingBox.origin.y + a.boundingBox.size.height
+        let bTop = b.boundingBox.origin.y + b.boundingBox.size.height
+        return aTop > bTop
+    }
+
+    let texts = sorted.compactMap { $0.topCandidates(1).first?.string }
+    print(texts.joined(separator: "\n"))
+    print("---FRAME_END---")
+}
+"#;
+
+/// Ensure the video OCR helper binary is compiled and cached.
+fn ensure_video_ocr_helper() -> Result<String, TextifierError> {
+    let cache_dir = crate::home_dir().join(".cache").join("xhs-recipe");
+    std::fs::create_dir_all(&cache_dir)
+        .map_err(|e| TextifierError::OcrFailed(format!("create cache dir: {}", e)))?;
+
+    let binary_path = cache_dir.join("video_ocr_helper");
+    let source_path = cache_dir.join("video_ocr_helper.swift");
+
+    let needs_compile = match (std::fs::metadata(&binary_path), std::fs::metadata(&source_path)) {
+        (Ok(bin_md), Ok(src_md)) => {
+            match (bin_md.modified(), src_md.modified()) {
+                (Ok(bin_time), Ok(src_time)) => src_time > bin_time,
+                _ => true,
+            }
+        }
+        _ => true,
+    };
+
+    if needs_compile {
+        std::fs::write(&source_path, VIDEO_OCR_HELPER_SOURCE)
+            .map_err(|e| TextifierError::OcrFailed(format!("write Swift source: {}", e)))?;
+
+        crate::vprintln!("  ↓ 编译视频 OCR 辅助工具...");
+        let output = Command::new("swiftc")
+            .args(["-O", "-o", &binary_path.to_string_lossy(), &source_path.to_string_lossy()])
+            .output()
+            .map_err(|e| TextifierError::OcrFailed(format!("swiftc exec: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(TextifierError::OcrFailed(format!("swiftc error: {}", stderr.trim())));
+        }
+        crate::vprintln!("  ✓ 视频 OCR 辅助工具编译完成");
+    }
+
+    Ok(binary_path.to_string_lossy().to_string())
+}
+
+/// Extract frames from video and run OCR in a single step using AVFoundation + Vision.
+/// Replaces the old ffmpeg-based frame extraction pipeline.
+fn ocr_video_frames(video_path: &Path) -> Result<Option<String>, TextifierError> {
+    let helper = ensure_video_ocr_helper()?;
 
     let output = Command::new(&helper)
-        .args(frame_paths.iter().map(|p| p.to_string_lossy().to_string()))
+        .arg(video_path.to_string_lossy().as_ref())
         .output()
-        .map_err(|e| TextifierError::OcrFailed(format!("OCR helper exec: {}", e)))?;
+        .map_err(|e| TextifierError::OcrFailed(format!("video OCR helper exec: {}", e)))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TextifierError::OcrFailed(format!("OCR helper error: {}", stderr.trim())));
+        return Err(TextifierError::OcrFailed(format!("video OCR helper error: {}", stderr.trim())));
     }
 
-    // Parse output: each frame's text is separated by ---FRAME_END---
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut frame_texts: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -525,7 +584,7 @@ fn ocr_all_frames(frame_paths: &[PathBuf]) -> Result<Option<String>, TextifierEr
     }
 
     let combined = results.join("\n");
-    crate::vprintln!("  ✓ OCR 完成 (约{}字)", combined.chars().count());
+    crate::vprintln!("  ✓ 帧 OCR 完成 (约{}字)", combined.chars().count());
     Ok(Some(combined))
 }
 
@@ -662,20 +721,18 @@ async fn transcribe_video(url: &str, asr_model: &str) -> Result<String, Textifie
         .map_err(|e| TextifierError::DownloadFailed(format!("tempdir: {}", e)))?;
     let dir = output_dir.path().to_path_buf();
 
-    // Step 1: Download video once, shared between ASR and OCR
-    let video = {
-        let d = dir.clone();
-        let u = url;
-        tokio::task::spawn_blocking(move || download_video(&u, &d)).await
-            .map_err(|e| TextifierError::DownloadFailed(format!("task: {}", e)))?
-            .map_err(|e| { println!("  ⚠ 无视频内容: {} (跳过视频处理)", e); e })
-            .ok()
-            .flatten()
+    // Step 1: Download video directly via reqwest
+    let video = match download_video(&url, &dir).await {
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            println!("  ⚠ 该笔记没有实际视频，使用图文内容继续分析");
+            return Ok(String::new());
+        }
+        Err(e) => {
+            println!("  ⚠ 视频下载失败: {} (跳过视频处理)", e);
+            return Ok(String::new());
+        }
     };
-    let video = match video { Some(v) => v, None => {
-        println!("  ⚠ 该笔记没有实际视频，使用图文内容继续分析");
-        return Ok(String::new());
-    }};
 
     // Step 2: Run ASR (audio) and OCR (frames) in parallel
     let video_asr = video.clone();
@@ -693,16 +750,8 @@ async fn transcribe_video(url: &str, asr_model: &str) -> Result<String, Textifie
     });
 
     let video_ocr = video;
-    let dir_ocr = dir;
     let ocr_handle = tokio::task::spawn_blocking(move || -> Result<Option<String>, TextifierError> {
-        let frames = match extract_frames(&video_ocr, &dir_ocr) {
-            Ok(f) => f,
-            Err(e) => {
-                println!("  ⚠ 帧提取失败: {}", e);
-                return Ok(None);
-            }
-        };
-        ocr_all_frames(&frames)
+        ocr_video_frames(&video_ocr)
     });
 
     let transcript = asr_handle.await

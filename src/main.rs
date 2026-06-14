@@ -145,13 +145,6 @@ fn run_setup() {
 
     println!("📦 检查系统依赖...");
 
-    if which("yt-dlp").is_some() {
-        println!("  ✓ yt-dlp 已安装");
-    } else {
-        println!("  ✗ yt-dlp 未安装（pip install yt-dlp）");
-        missing.push("yt-dlp");
-    }
-
     if which("qwen-asr").is_some() {
         println!("  ✓ qwen-asr 已安装");
 
@@ -173,14 +166,6 @@ fn run_setup() {
         println!("    运行: cargo install qwen-asr-cli");
         println!("    然后: qwen-asr download qwen3-asr-0.6b");
         missing.push("qwen-asr");
-    }
-
-    println!();
-    if which("ffmpeg").is_some() {
-        println!("  ✓ ffmpeg 已安装");
-    } else {
-        println!("  ✗ ffmpeg 未安装（brew install ffmpeg）");
-        missing.push("ffmpeg");
     }
 
     if which("swiftc").is_some() {
