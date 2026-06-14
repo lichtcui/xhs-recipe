@@ -334,7 +334,7 @@ fn resolve_model_dir(model_name: &str) -> Result<String, TextifierError> {
 }
 
 
-// ── Video Frame OCR (ffmpeg + Vision framework) ─────────────────
+// ── Video Frame OCR (AVFoundation + Vision framework) ────────────
 
 /// Source code for the macOS Vision-based OCR helper binary.
 const OCR_HELPER_SOURCE: &str = r#"import Vision

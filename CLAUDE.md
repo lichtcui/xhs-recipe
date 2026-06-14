@@ -83,7 +83,7 @@ cargo run -- extract <url>
 
 ```bash
 # Run all tests
-cargo test                   # 78 lib + 9 bin + 4 integration = 91 tests
+cargo test                   # 80 lib + 8 bin + 4 integration = 92 tests
 cargo audit                  # Security audit (install: cargo install cargo-audit)
 cargo test --lib             # Library tests only
 cargo test --bin xhs-recipe  # Binary (CLI) tests only
