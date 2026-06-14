@@ -109,9 +109,6 @@ cargo run -- show <id>
 ### 其他命令
 
 ```bash
-# 手动登录（如果自动 cookie 失败）
-cargo run -- login [--headless]
-
 # 清除已保存的 cookie
 cargo run -- logout
 
@@ -128,7 +125,7 @@ cargo audit
 URL → Source Adapter → Textifier → Analyzer → Presentation
 ```
 
-1. **Source Adapter** — 浏览器自动化抓取小红书页面，提取文字和图片
+1. **Source Adapter** — HTTP 抓取小红书页面，提取文字和图片
 2. **Textifier** — 视频 → reqwest 下载 + symphonia + Qwen3-ASR 转写 + ffmpeg + macOS Vision 帧 OCR；图文笔记 → macOS Vision OCR
 3. **Analyzer** — OCR 文字 → DeepSeek API function calling → `Recipe` 模型
 4. **Storage** — 自动保存到 `~/.xhs-recipe/recipes/`，同一 URL 重复提取自动去重
@@ -147,8 +144,8 @@ src/
 ├── sources/
 │   ├── base.rs           # URL 路由 & 域检查
 │   └── xiaohongshu/      # 小红书适配器
-│       ├── auth.rs       # Cookie / 登录
-│       ├── scraper.rs    # 抓取降级策略 (zendriver + HTTP)
+│       ├── auth.rs       # Cookie 管理
+│       ├── scraper.rs    # 抓取 (reqwest HTTP)
 │       └── url.rs        # URL 解析
 ├── storage/
 │   ├── mod.rs            # Storage trait
@@ -161,7 +158,7 @@ src/
 ## 测试
 
 ```bash
-cargo test                   # 78 lib + 11 bin + 4 integration = 93 tests
+cargo test                   # 78 lib + 9 bin + 4 integration = 91 tests
 cargo test --lib             # 仅库测试
 cargo test --bin xhs-recipe  # 仅 CLI 测试
 cargo audit                  # 安全审计（安装: cargo install cargo-audit）

@@ -30,13 +30,6 @@ enum Command {
     },
     /// 初始化项目环境
     Setup,
-    /// 扫码登录小红书
-    Login {
-        #[arg(long)]
-        headless: bool,
-        #[arg(short, long, default_value_t = 120)]
-        timeout: u32,
-    },
     /// 清除已保存的 Cookie
     Logout,
     /// 列出本地已保存的菜谱
@@ -60,7 +53,6 @@ fn main() {
             run_extract(&url, output.as_deref(), &model, &asr_model, images, timeout);
         }
         Command::Setup => run_setup(),
-        Command::Login { headless, timeout } => run_login(headless, timeout),
         Command::Logout => run_logout(),
         Command::List { verbose } => run_list(verbose),
         Command::Show { id } => run_show(&id),
@@ -127,9 +119,8 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_mod
             let msg = e.to_string();
             if msg.contains("需要登录") {
                 eprintln!("\n{}", msg);
-                eprintln!("\n提示: 小红书自动获取 Cookie 失败");
-                eprintln!("  或者尝试手动扫码登录获取新的 Cookie：");
-                eprintln!("  xhs-recipe login");
+                eprintln!("\n提示: 小红书页面需要登录才能访问，请确保 Cookie 有效");
+                eprintln!("  或尝试使用 --no-images 跳过图片 OCR 以降低被限流概率");
             } else if msg.contains("API key") {
                 eprintln!("{}", msg);
             } else {
@@ -217,24 +208,6 @@ fn run_setup() {
         println!("✅ 全部就绪！运行 xhs-recipe extract <链接> 开始使用");
     } else {
         println!("⚠ 缺少: {}。按上述指引安装后重试", missing.join(", "));
-    }
-}
-
-fn run_login(headless: bool, timeout: u32) {
-    println!("📱 小红书登录");
-
-    let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
-    match rt.block_on(xhs_recipe::sources::xiaohongshu::auth::login(headless, timeout)) {
-        Ok(true) => {
-            println!("\n现在可以运行 xhs-recipe extract 来提取菜谱了！");
-        }
-        Ok(false) => {
-            std::process::exit(1);
-        }
-        Err(e) => {
-            eprintln!("登录失败: {}", e);
-            std::process::exit(1);
-        }
     }
 }
 
@@ -370,30 +343,6 @@ mod tests {
     fn test_cli_setup() {
         let cli = Cli::try_parse_from(["xhs-recipe", "setup"]).unwrap();
         assert!(matches!(cli.command, Command::Setup));
-    }
-
-    #[test]
-    fn test_cli_login() {
-        let cli = Cli::try_parse_from(["xhs-recipe", "login"]).unwrap();
-        match cli.command {
-            Command::Login { headless, timeout } => {
-                assert!(!headless);
-                assert_eq!(timeout, 120);
-            }
-            _ => panic!("expected Login"),
-        }
-    }
-
-    #[test]
-    fn test_cli_login_with_options() {
-        let cli = Cli::try_parse_from(["xhs-recipe", "login", "--headless", "--timeout", "60"]).unwrap();
-        match cli.command {
-            Command::Login { headless, timeout } => {
-                assert!(headless);
-                assert_eq!(timeout, 60);
-            }
-            _ => panic!("expected Login"),
-        }
     }
 
     #[test]

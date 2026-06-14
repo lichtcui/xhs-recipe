@@ -1,151 +1,17 @@
-/// Xiaohongshu page scraper using zendriver-rs (stealth-by-default).
+/// Xiaohongshu page scraper using reqwest HTTP (no browser automation).
 ///
 /// Strategy:
-/// 1. zendriver-rs with stealth (primary — replaces Python bridge + playwright-rs)
-/// 2. reqwest direct HTTP (fallback — fast, no browser needed)
+/// 1. __NEXT_DATA__ JSON via HTML parsing (primary)
+/// 2. OG meta tags via HTML parsing (fallback)
 use crate::models::RawContent;
 use super::super::SourceError;
 use std::time::Duration;
 
 pub async fn scrape(url: &str) -> Result<RawContent, SourceError> {
-    // Require saved cookies — login is a separate step, extract does not auto-login.
-    if !super::auth::has_cookies() {
-        return Err(SourceError::FetchFailed(
-            "未找到登录缓存，请先执行: xhs-recipe login".into(),
-        ));
-    }
-
-    // 1. zendriver-rs (stealth built-in, replaces Python bridge entirely)
-    match scrape_zendriver(url).await {
-        Ok(raw) if is_valid(&raw.title) => return Ok(raw),
-        Ok(_) => {}  // fall through to HTTP fallback
-        Err(ref e) if is_auth_error(e) => return Err(e.clone()),
-        Err(_) => {}  // fall through to HTTP fallback
-    }
-    // 2. reqwest direct HTTP (fastest path when it works)
     scrape_http(url).await
 }
 
-fn is_auth_error(err: &SourceError) -> bool {
-    matches!(err, SourceError::FetchFailed(msg) if msg.contains("需要登录") || msg.contains("登录才能"))
-}
-
-fn is_valid(title: &str) -> bool {
-    !title.is_empty()
-        && title != "安全限制"
-        && title != "403"
-        && title != "当前笔记暂时无法浏览"
-        && title != "手机号登录"
-        && title != "登录"
-        && title != "小红书"
-}
-
-// ── 1. zendriver-rs (stealth built-in) ───────────────────────────────
-
-async fn scrape_zendriver(url: &str) -> Result<RawContent, SourceError> {
-    let browser = zendriver::Browser::builder()
-        .headless(true)
-        .lang(String::from("zh-CN"))
-        .launch()
-        .await
-        .map_err(|e| SourceError::FetchFailed(format!("zendriver launch: {}", e)))?;
-
-    let result = scrape_zendriver_inner(&browser, url).await;
-    browser.close().await.ok();
-    result
-}
-
-/// Inner logic with guaranteed browser cleanup by the caller.
-async fn scrape_zendriver_inner(browser: &zendriver::Browser, url: &str) -> Result<RawContent, SourceError> {
-    let jar = browser.cookies();
-
-    // Load saved cookies before navigation
-    let saved = super::auth::load_cookies();
-    if !saved.is_empty() {
-        if let Err(e) = jar.set_many(saved).await {
-            println!("  ⚠ 设置 Cookie 失败: {}", e);
-        } else {
-            crate::vprintln!("  ✓ 已设置 Cookie ({} 个)", jar.all().await.map(|c| c.len()).unwrap_or(0));
-        }
-    }
-
-    let tab = browser.main_tab();
-
-    tab.goto(url)
-        .await
-        .map_err(|e| SourceError::FetchFailed(format!("zendriver goto: {}", e)))?;
-    tab.wait_for_load().await.ok();
-    crate::vprintln!("  ✓ 页面加载完成");
-
-    // Short delay for dynamic content
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-    let (title, desc, images, has_video, video_url) = extract_data(&tab).await?;
-
-    if title.is_empty() || title == "手机号登录" || title == "登录" || title == "小红书" {
-        return Err(SourceError::FetchFailed("需要登录才能查看内容".into()));
-    }
-    if title == "当前笔记暂时无法浏览" {
-        return Err(SourceError::FetchFailed(
-            "当前笔记暂时无法浏览（IP 被限流，尝试扫码登录或更换网络）".into(),
-        ));
-    }
-
-    Ok(RawContent {
-        title,
-        text_content: desc,
-        image_urls: images,
-        has_video,
-        video_url,
-        source: "xiaohongshu".into(),
-        source_url: url.to_string(),
-    })
-}
-
-// ── Page data extraction ─────────────────────────────────────────────
-
-async fn extract_data(
-    tab: &zendriver::Tab,
-) -> Result<(String, String, Vec<String>, bool, Option<String>), SourceError> {
-    // Try __NEXT_DATA__ via evaluate_main
-    let js = r#"(()=>{try{const el=document.getElementById('__NEXT_DATA__');if(el)return el.textContent;}catch(e){}try{if(window.__INITIAL_STATE__)return JSON.stringify(window.__INITIAL_STATE__);}catch(e){}return null;})()"#;
-
-    let json_str: Option<String> = tab.evaluate_main(js).await.ok();
-
-    if let Some(ref s) = json_str {
-        if let Some(parsed) = parse_next_data(s) {
-            return Ok(parsed);
-        }
-    }
-    const DOM_EXTRACT_JS: &str = r#"(()=>{const r={title:'',description:'',images:[],hasVideo:false};const note=document.querySelector('#noteContainer')||document.querySelector('[class*="note"]');const og=document.querySelector('meta[property="og:title"]');if(og)r.title=og.getAttribute('content')||'';const od=document.querySelector('meta[property="og:description"]');if(od)r.description=od.getAttribute('content')||'';if(!r.title){const scope=note||document;for(const s of['#detail-title','.title','h1.title','[class*="title"]']){const e=scope.querySelector(s);if(e&&e.innerText){r.title=e.innerText.trim();break;}}}const scope=note||document;const seen=new Set();const com=scope.querySelector('.comments-el');scope.querySelectorAll('img').forEach(i=>{if(com&&com.contains(i))return;const src=i.getAttribute('src')||i.getAttribute('data-src')||'';if(src&&src.includes('https://')&&!seen.has(src)&&!src.includes('avatar')&&!src.includes('icon')&&!src.includes('emoji')){r.images.push(src);seen.add(src);}});r.hasVideo=!!scope.querySelector('video');return JSON.stringify(r);})()"#;
-
-    let dom_json: String = tab
-        .evaluate_main(DOM_EXTRACT_JS)
-        .await
-        .map_err(|e| SourceError::FetchFailed(format!("DOM extract: {}", e)))?;
-
-    let data: PageData = serde_json::from_str(&dom_json)
-        .map_err(|e| SourceError::FetchFailed(format!("DOM JSON: {}", e)))?;
-
-    if !data.title.is_empty() {
-        return Ok((data.title, data.description, data.images, data.has_video, data.video_url));
-    }
-
-    Ok((String::new(), String::new(), vec![], false, None))
-}
-
-fn parse_next_data(json_str: &str) -> Option<(String, String, Vec<String>, bool, Option<String>)> {
-    if json_str.is_empty() || json_str == "null" || json_str == "undefined" {
-        return None;
-    }
-    let val: serde_json::Value = serde_json::from_str(json_str).ok()?;
-    parse_note_from_state(&val)
-        .ok()
-        .map(|pd| (pd.title, pd.description, pd.images, pd.has_video, pd.video_url))
-}
-
-// ── 2. reqwest direct HTTP (fallback) ────────────────────────────────
-
+/// reqwest direct HTTP client
 fn xhs_http_client() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(|| {
@@ -211,7 +77,7 @@ async fn scrape_http(url: &str) -> Result<RawContent, SourceError> {
     Err(SourceError::FetchFailed("无法从 HTML 中提取数据".into()))
 }
 
-// ── HTML parsing (shared) ────────────────────────────────────────────
+// ── HTML parsing ────────────────────────────────────────────────
 
 fn extract_next_data_from_html(html: &str) -> Option<serde_json::Value> {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
@@ -228,7 +94,7 @@ fn extract_next_data_from_html(html: &str) -> Option<serde_json::Value> {
         return serde_json::from_str::<serde_json::Value>(&raw).ok();
     }
     let re2 = RE2.get_or_init(|| {
-        regex::Regex::new(r#"window\.__INITIAL_STATE__\s*=\s*(\{.*?\});"#).expect("regex: initial state")
+        regex::Regex::new(r"(?s)window\.__INITIAL_STATE__\s*=\s*(\{.*?\});").expect("regex: initial state")
     });
     if let Some(cap) = re2.captures(html) {
         return serde_json::from_str::<serde_json::Value>(cap.get(1)?.as_str()).ok();
@@ -239,15 +105,16 @@ fn extract_next_data_from_html(html: &str) -> Option<serde_json::Value> {
 fn extract_og_title(html: &str) -> Option<String> {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let re = RE.get_or_init(|| {
-        regex::Regex::new(r#"<meta[^>]*property="og:title"[^>]*content="([^"]*)"[^>]*/?>"#).expect("regex: og:title")
+        regex::Regex::new(r#"<meta[^>]*(?:name|property)="og:title"[^>]*content="([^"]*)"[^>]*/?>"#).expect("regex: og:title")
     });
-    Some(re.captures(html)?.get(1)?.as_str().to_string())
+    let t = re.captures(html)?.get(1)?.as_str().to_string();
+    Some(t.trim_end_matches(" - 小红书").to_string())
 }
 
 fn extract_og_description(html: &str) -> Option<String> {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let re = RE.get_or_init(|| {
-        regex::Regex::new(r#"<meta[^>]*property="og:description"[^>]*content="([^"]*)"[^>]*/?>"#).expect("regex: og:description")
+        regex::Regex::new(r#"<meta[^>]*(?:name|property)="og:description"[^>]*content="([^"]*)"[^>]*/?>"#).expect("regex: og:description")
     });
     Some(re.captures(html)?.get(1)?.as_str().to_string())
 }
@@ -255,7 +122,7 @@ fn extract_og_description(html: &str) -> Option<String> {
 fn extract_og_image(html: &str) -> Vec<String> {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let re = RE.get_or_init(|| {
-        regex::Regex::new(r#"<meta[^>]*property="og:image"[^>]*content="([^"]*)"[^>]*/?>"#).expect("regex: og:image")
+        regex::Regex::new(r#"<meta[^>]*(?:name|property)="og:image"[^>]*content="([^"]*)"[^>]*/?>"#).expect("regex: og:image")
     });
     re.captures_iter(html)
         .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
@@ -299,7 +166,6 @@ fn note_to_pagedata(note: &serde_json::Value) -> PageData {
             .and_then(|v| v.get("media"))
             .and_then(|m| m.get("stream"))
             .and_then(|s| {
-                // Prefer h264 master_url, fallback to h265
                 s.get("h264")
                     .and_then(|a| a.as_array())
                     .and_then(|a| a.first())
@@ -354,9 +220,22 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_og_title() {
+    fn test_extract_initial_state_multiline() {
+        let html = "<script>window.__INITIAL_STATE__={\"note\":{\n  \"title\":\"测试标题\",\n  \"desc\":\"描述内容\"\n},\"user\":{}};</script>";
+        let val = extract_next_data_from_html(html).unwrap();
+        assert_eq!(val["note"]["title"].as_str().unwrap(), "测试标题");
+    }
+
+    #[test]
+    fn test_extract_og_title_property() {
         let html = r#"<meta property="og:title" content="蒜香椒盐烤排骨" />"#;
         assert_eq!(extract_og_title(html).unwrap(), "蒜香椒盐烤排骨");
+    }
+
+    #[test]
+    fn test_extract_og_title_name() {
+        let html = r#"<meta name="og:title" content="红烧肉 - 小红书" />"#;
+        assert_eq!(extract_og_title(html).unwrap(), "红烧肉");
     }
 
     #[test]
@@ -365,7 +244,6 @@ mod tests {
         let p = parse_note_from_state(&s).unwrap();
         assert_eq!(p.title, "红烧肉");
         assert!(p.has_video);
-        // image-only post with wrong type="video" should NOT have has_video
         let s2 = serde_json::json!({"note":{"title":"菜饭","desc":"做法","imageList":[{"url":"https://x.com/1.jpg"},{"url":"https://x.com/2.jpg"}],"type":"video"}});
         let p2 = parse_note_from_state(&s2).unwrap();
         assert!(!p2.has_video);

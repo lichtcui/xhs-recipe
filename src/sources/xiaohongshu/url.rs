@@ -1,6 +1,7 @@
 /// Xiaohongshu URL handling: detection, short URL resolution, note ID extraction.
 use regex::Regex;
 use std::sync::OnceLock;
+use std::time::Duration;
 
 /// Check if a URL is a Xiaohongshu URL.
 pub fn is_xhs_url(url: &str) -> bool {
@@ -36,43 +37,49 @@ pub fn extract_note_id(url: &str) -> Option<String> {
     None
 }
 
-/// Resolve an xhslink.com short URL using zendriver-rs (needs JS redirect).
+/// Resolve an xhslink.com short URL using reqquest HTTP redirect.
 pub async fn resolve_short_url(url: &str) -> Result<String, String> {
     if !url.contains("xhslink.com") {
         return Ok(url.to_string());
     }
 
-    let browser = zendriver::Browser::builder()
-        .headless(true)
-        .lang(String::from("zh-CN"))
-        .launch()
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let resp = client
+        .get(url)
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+        .send()
         .await
-        .map_err(|e| format!("启动浏览器失败: {}", e))?;
+        .map_err(|e| format!("请求失败: {}", e))?;
 
-    let result = resolve_short_url_inner(&browser, url).await;
-    browser.close().await.ok();
-    result
-}
-
-async fn resolve_short_url_inner(browser: &zendriver::Browser, url: &str) -> Result<String, String> {
-    let tab = browser.main_tab();
-    tab.goto(url)
-        .await
-        .map_err(|e| format!("页面加载失败: {}", e))?;
-
-    // Small delay to let redirect complete
-    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-
-    let resolved = tab
-        .url()
-        .await
-        .map_err(|e| format!("获取 URL 失败: {}", e))?
-        .to_string();
-
-    if resolved == url {
-        return Err("短链解析失败: URL 未变化".into());
+    // Follow redirect chain manually
+    let status = resp.status();
+    if status.is_redirection() {
+        if let Some(location) = resp.headers().get("location").and_then(|v| v.to_str().ok()) {
+            let resolved = if location.starts_with("http") {
+                location.to_string()
+            } else {
+                // Relative redirect — resolve against original URL
+                let base = url.trim_end_matches('/');
+                format!("{}{}", base, location)
+            };
+            if resolved == url {
+                return Err("短链解析失败: URL 未变化".into());
+            }
+            return Ok(resolved);
+        }
     }
-    Ok(resolved)
+
+    if status.is_success() {
+        // Might have gotten the final page directly (no redirect)
+        return Ok(resp.url().to_string());
+    }
+
+    Err(format!("短链解析失败: HTTP {}", status))
 }
 
 #[cfg(test)]

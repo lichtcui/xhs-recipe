@@ -32,9 +32,6 @@ qwen-asr download qwen3-asr-0.6b
 #     ~/.cache/qwen-asr/qwen3-asr-0.6b
 #   rm -rf ~/.cache/qwen-asr/qwen3-asr-0.6b/.git
 
-# Manual login (if auto-cookie fails)
-cargo run -- login [--headless]
-
 # Clear saved cookies
 cargo run -- logout
 
@@ -66,7 +63,7 @@ cargo run -- extract <url>
 
 1. **`main.rs`** 先查本地缓存（`Storage::get_by_source_url`），命中则直接显示并跳过后续步骤
 2. **`pipeline.extract()`** 接收 URL，调用 `sources.fetch(url)` 路由到对应适配器
-3. **Source Adapter**（如 `sources/xiaohongshu/`）：zendriver-rs 浏览器自动化抓取页面，返回平台无关的 `RawContent`
+3. **Source Adapter**（如 `sources/xiaohongshu/`）：reqwest HTTP 抓取页面，返回平台无关的 `RawContent`
 4. **`textifier.process()`**：视频 → reqwest 下载 + symphonia + Qwen3-ASR 转写 + AVFoundation 抽帧 + Vision OCR，返回 `TextContent`
 5. **`analyzer::extract_recipe()`**：OCR 文本 + 描述文字 → LLM function calling → `Recipe` 模型
 6. **`storage`**：提取后自动保存到 `~/.xhs-recipe/recipes/`。同一 URL 重复提取时自动去重，跳过保存
@@ -76,12 +73,12 @@ cargo run -- extract <url>
 
 - **数据流单向**：sources/ 不依赖 analyzer，analyzer 不关心内容来源
 - **RawContent（平台无关）**：各 Source Adapter 统一输出 `RawContent`，新增来源只需新写 adapter
-- **Cookie auth**：zendriver-rs 管理浏览器 cookie
+- **Cookie auth**：JSON 文件管理 cookie（~/.cache/xhs-recipe/cookies.json）
 - **Video download**：从页面提取视频直链，reqwest 直接下载，symphonia（纯 Rust）提取音频 → Qwen3-ASR 转写
 - **Video OCR**：AVFoundation（AVAssetImageGenerator）提取关键帧 → macOS Vision 框架识别画面中文字
 - **ASR + OCR 并行**：下载视频后，音频转写与帧 OCR 同时执行，结果合并后送入 LLM
 - **Image OCR**：`send_images` 控制是否为图文笔记执行 OCR；图片在 textifier 阶段 OCR 为文字后送入 LLM，而非直接发送图片
-- **Fallback chain for scraping**：zendriver（`__NEXT_DATA__` → DOM selectors）→ reqwest HTTP fallback（`__NEXT_DATA__` → og:meta）
+- **Scraping strategy**：reqwest HTTP → `__NEXT_DATA__` JSON → OG meta tag fallback
 - **CLI uses clap** for argument parsing
 - **Dedup & cache**：同一 URL 重复提取时先查本地缓存，命中则跳过 pipeline 直接显示；`save()` 自动去重不产生重复条目
 
@@ -89,7 +86,7 @@ cargo run -- extract <url>
 
 ```bash
 # Run all tests
-cargo test                   # 78 lib + 11 bin + 4 integration = 93 tests
+cargo test                   # 78 lib + 9 bin + 4 integration = 91 tests
 cargo audit                  # Security audit (install: cargo install cargo-audit)
 cargo test --lib             # Library tests only
 cargo test --bin xhs-recipe  # Binary (CLI) tests only
@@ -115,8 +112,8 @@ src/
 │   ├── base.rs           # URL routing & domain checking
 │   └── xiaohongshu/
 │       ├── mod.rs
-│       ├── auth.rs       # Cookie / login
-│       ├── scraper.rs    # Scrape fallback chain
+│       ├── auth.rs       # Cookie management
+│       ├── scraper.rs    # Scraper (reqwest HTTP)
 │       └── url.rs        # URL parsing
 ├── storage/
 │   ├── mod.rs            # Storage trait (save/list/get/get_by_source_url/delete)
