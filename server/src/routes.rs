@@ -167,12 +167,9 @@ async fn run_process(
 }
 
 async fn health_handler() -> impl IntoResponse {
-    let has_chi_sim = check_chi_sim();
-
     let deps = serde_json::json!({
         "ffmpeg": xhs_recipe::which("ffmpeg").is_some(),
-        "tesseract": xhs_recipe::which("tesseract").is_some(),
-        "tesseract_chi_sim": has_chi_sim,
+        "swiftc": xhs_recipe::which("swiftc").is_some(),
         "qwen_asr": xhs_recipe::which("qwen-asr").is_some(),
         "qwen_asr_model": check_asr_model(),
     });
@@ -191,16 +188,3 @@ fn check_asr_model() -> bool {
         .exists()
 }
 
-fn check_chi_sim() -> bool {
-    std::process::Command::new("tesseract")
-        .args(["--list-langs"])
-        .output()
-        .ok()
-        .map(|o| {
-            let all = format!("{}\n{}",
-                String::from_utf8_lossy(&o.stdout),
-                String::from_utf8_lossy(&o.stderr));
-            all.contains("chi_sim")
-        })
-        .unwrap_or(false)
-}
