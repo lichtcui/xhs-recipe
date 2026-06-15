@@ -1,6 +1,6 @@
 # xhs-recipe
 
-从小红书（Xiaohongshu / RedNote）帖子链接中提取结构化中文食谱的 CLI 工具。
+从小红书（Xiaohongshu / RedNote）帖子链接中提取结构化中文食谱的 CLI 工具 + HTTP 服务器 + Tauri 桌面应用。
 
 ## 功能
 
@@ -12,6 +12,7 @@
 - 合集多菜谱自动分批提取
 - 输出到终端（彩色）、Markdown 或 JSON
 - 内置 HTTP server（axum），支持 SSE 流式返回
+- Tauri 桌面应用前端
 
 ## 前置依赖
 
@@ -147,33 +148,56 @@ URL → Source Adapter → Textifier → Analyzer → Presentation
 ## 项目结构
 
 ```
-src/
-├── main.rs               # CLI 入口（clap）
-├── lib.rs                # 库根模块
-├── models.rs             # 数据模型（serde）
-├── pipeline.rs           # 编排：fetch → textify → analyze
-├── textifier.rs          # reqwest + symphonia + Qwen3-ASR + ffmpeg/tesseract OCR
-├── analyzer.rs           # LLM function calling (DeepSeek)
-├── sources/
-│   ├── base.rs           # URL 路由 & 域检查
-│   └── xiaohongshu/      # 小红书适配器
-│       ├── auth.rs       # Cookie 管理
-│       ├── scraper.rs    # 抓取 (reqwest HTTP)
-│       └── url.rs        # URL 解析
-├── storage/
-│   ├── mod.rs            # Storage trait
-│   └── local.rs          # 本地文件存储 ~/.xhs-recipe/recipes/
-└── presentation/
-    ├── render.rs         # 终端输出 (彩色)
-    └── save.rs           # .md / .json 保存
+xhs-recipe/
+├── Cargo.toml              # workspace 根
+├── src/                    # CLI/lib crate
+│   ├── main.rs             # CLI 入口（clap）
+│   ├── lib.rs              # 库根模块
+│   ├── models.rs           # 数据模型（serde）
+│   ├── pipeline.rs         # 编排：fetch → textify → analyze
+│   ├── textifier.rs        # reqwest + symphonia + Qwen3-ASR + ffmpeg/tesseract OCR
+│   ├── analyzer.rs         # LLM function calling (DeepSeek)
+│   ├── sources/
+│   │   ├── mod.rs          # Source 路由
+│   │   ├── base.rs         # URL 路由 & 域检查
+│   │   └── xiaohongshu/    # 小红书适配器
+│   │       ├── auth.rs     # Cookie 管理
+│   │       ├── scraper.rs  # 抓取 (reqwest HTTP)
+│   │       └── url.rs      # URL 解析
+│   ├── storage/
+│   │   ├── mod.rs          # Storage trait
+│   │   └── local.rs        # 本地文件存储 ~/.xhs-recipe/recipes/
+│   └── presentation/
+│       ├── render.rs       # 终端输出 (彩色)
+│       └── save.rs         # .md / .json 保存
+├── server/                 # HTTP server crate (xhs-recipe-server)
+│   ├── Cargo.toml
+│   └── src/
+│       ├── main.rs         # axum 启动
+│       ├── routes.rs       # POST /process (SSE) + GET /health
+│       ├── splitter.rs     # 内容拆分
+│       └── error.rs        # 错误码
+├── tauri-app/              # Tauri 桌面应用
+│   ├── src-tauri/          # Rust 后端
+│   │   ├── Cargo.toml
+│   │   └── tauri.conf.json
+│   ├── src/                # 前端 (JS)
+│   │   ├── main.js
+│   │   └── styles.css
+│   └── index.html
+└── tests/
+    ├── integration.rs
+    └── testdata/
+        ├── recipe_test.json
+        └── recipe_test.md
 ```
 
 ## 测试
 
 ```bash
-cargo test                   # 全部测试
-cargo test --lib             # 仅库测试
-cargo test --bin xhs-recipe  # 仅 CLI 测试
+cargo test                   # 全部测试（lib + bin + server）
+cargo test -p xhs-recipe     # 仅 CLI/lib 测试
+cargo test -p xhs-recipe-server  # 仅 server 测试
 cargo audit                  # 安全审计（安装: cargo install cargo-audit）
 ```
 

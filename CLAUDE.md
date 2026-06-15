@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CLI tool + HTTP server to extract structured Chinese recipes from 小红书 (Xiaohongshu / RedNote) post URLs, written in Rust. Cargo workspace with `xhs-recipe` (CLI/lib) and `xhs-recipe-server` (axum HTTP server).
+CLI tool + HTTP server + Tauri desktop app to extract structured Chinese recipes from 小红书 (Xiaohongshu / RedNote) post URLs, written in Rust. Cargo workspace with `xhs-recipe` (CLI/lib), `xhs-recipe-server` (axum HTTP server), and `xhs-recipe-tauri` (Tauri desktop frontend, excluded from workspace).
 
 ## Build & Run
 
@@ -17,6 +17,8 @@ cargo run -- extract <xhs-url>
 cargo run -- extract <xhs-url> -o recipe.md           # save to file
 cargo run -- extract <xhs-url> --no-images             # skip image OCR
 cargo run -- extract <xhs-url> --asr-model qwen3-asr-1.7b  # higher accuracy model
+cargo run -- extract <xhs-url> --model deepseek-chat     # specify LLM model
+cargo run -- extract <xhs-url> --timeout 600              # set timeout in seconds
 
 # Server
 cargo run -p xhs-recipe-server      # starts on http://127.0.0.1:3000
@@ -117,7 +119,7 @@ cargo audit                   # install: cargo install cargo-audit
 
 ## Source Layout
 
-Cargo workspace with two members:
+Cargo workspace with two members (`tauri-app/src-tauri` is excluded from workspace):
 
 ```
 xhs-recipe/
@@ -151,6 +153,18 @@ xhs-recipe/
 │       ├── routes.rs       # POST /process (SSE) + GET /health
 │       ├── splitter.rs     # Items splitting by content_type
 │       └── error.rs        # Error codes
+├── tauri-app/              # Tauri desktop frontend (excluded from workspace)
+│   ├── src-tauri/
+│   │   ├── Cargo.toml      # xhs-recipe-tauri crate
+│   │   └── tauri.conf.json
+│   ├── src/
+│   │   ├── main.js         # Frontend entry point
+│   │   └── styles.css
+│   ├── index.html
+│   └── package.json
 └── tests/                  # Integration tests
-    └── integration.rs
+    ├── integration.rs
+    └── testdata/
+        ├── recipe_test.json
+        └── recipe_test.md
 ```
