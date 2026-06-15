@@ -120,7 +120,8 @@ fn video_download_client() -> reqwest::Client {
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(300))
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+            .cookie_store(true)
             .build()
             .expect("reqwest client build")
     }).clone()
@@ -480,7 +481,9 @@ fn image_download_client() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
             .timeout(std::time::Duration::from_secs(30))
+            .cookie_store(true)
             .build()
             .expect("reqwest client build")
     })
@@ -506,7 +509,13 @@ async fn download_images(urls: &[String], output_dir: &Path) -> Vec<PathBuf> {
 
     let mut paths = Vec::new();
     for (i, url) in urls.iter().enumerate() {
-        let resp = match client.get(url).send().await {
+        let resp = match client
+            .get(url)
+            .header("Referer", "https://www.xiaohongshu.com/")
+            .header("Accept", "image/webp,image/apng,image/*,*/*")
+            .send()
+            .await
+        {
             Ok(r) if r.status().is_success() => r,
             _ => {
                 println!("  ⚠ 图片下载失败: {}", &url[..url.len().min(80)]);

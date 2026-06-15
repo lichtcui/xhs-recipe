@@ -203,6 +203,7 @@ fn note_to_pagedata(note: &serde_json::Value) -> PageData {
 }
 
 fn parse_note_from_state(state: &serde_json::Value) -> Result<PageData, ()> {
+    // Top-level keys (discovery items, user profile, etc.)
     if let Some(note) = state.get("note") {
         return Ok(note_to_pagedata(note));
     }
@@ -210,6 +211,32 @@ fn parse_note_from_state(state: &serde_json::Value) -> Result<PageData, ()> {
         if let Some(note) = state.get(*key) {
             return Ok(note_to_pagedata(note));
         }
+    }
+    // Next.js explore page: __NEXT_DATA__ nests note under props.pageProps.*
+    if let Some(page_props) = state
+        .get("props")
+        .and_then(|p| p.get("pageProps"))
+    {
+        for key in &["noteData", "noteDetail", "currentNote", "note"] {
+            if let Some(note) = page_props.get(key) {
+                if note.get("title").and_then(|t| t.as_str()).map_or(false, |t| !t.is_empty()) {
+                    return Ok(note_to_pagedata(note));
+                }
+            }
+        }
+        // Some pages nest the actual note inside noteData.note
+        if let Some(note_data) = page_props.get("noteData") {
+            if let Some(note) = note_data.get("note") {
+                if note.get("title").and_then(|t| t.as_str()).map_or(false, |t| !t.is_empty()) {
+                    return Ok(note_to_pagedata(note));
+                }
+            }
+        }
+    }
+    // Debug: log available top-level keys when all lookups fail
+    if let Some(obj) = state.as_object() {
+        let keys: Vec<&str> = obj.keys().map(|s| s.as_str()).collect();
+        crate::vprintln!("  ⚠ __NEXT_DATA__ 顶层键: {:?}", keys);
     }
     Err(())
 }
@@ -268,5 +295,46 @@ mod tests {
         let s2 = serde_json::json!({"note":{"title":"菜饭","desc":"做法","imageList":[{"url":"https://x.com/1.jpg"},{"url":"https://x.com/2.jpg"}],"type":"video"}});
         let p2 = parse_note_from_state(&s2).unwrap();
         assert!(!p2.has_video);
+    }
+
+    #[test]
+    fn test_parse_note_from_state_nested_page_props() {
+        // Simulate __NEXT_DATA__ from explore page: props.pageProps.noteData
+        let s = serde_json::json!({
+            "props": {
+                "pageProps": {
+                    "noteData": {
+                        "title": "番茄炒蛋",
+                        "desc": "这大概是最好吃的番茄炒蛋了",
+                        "imageList": [{"url": "https://x.com/1.jpg"}]
+                    }
+                }
+            },
+            "page": "/explore/672acc30000000003c01438b"
+        });
+        let p = parse_note_from_state(&s).unwrap();
+        assert_eq!(p.title, "番茄炒蛋");
+        assert_eq!(p.description, "这大概是最好吃的番茄炒蛋了");
+        assert!(!p.has_video);
+    }
+
+    #[test]
+    fn test_parse_note_from_state_deeply_nested() {
+        // Nested: props.pageProps.noteData.note
+        let s = serde_json::json!({
+            "props": {
+                "pageProps": {
+                    "noteData": {
+                        "note": {
+                            "title": "糖醋排骨",
+                            "desc": "酸甜可口"
+                        }
+                    }
+                }
+            }
+        });
+        let p = parse_note_from_state(&s).unwrap();
+        assert_eq!(p.title, "糖醋排骨");
+        assert_eq!(p.description, "酸甜可口");
     }
 }
