@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>小红书菜谱提取</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Nav -->
+      <nav id="nav">
+        <button data-page="home" class="nav-btn active">首页</button>
+        <button data-page="settings" class="nav-btn">设置</button>
+      </nav>
+
+      <!-- Home Page -->
+      <div id="page-home" class="page active">
+        <div class="extract-section">
+          <h2>小红书菜谱提取</h2>
+          <div class="input-row">
+            <input
+              type="text"
+              id="url-input"
+              placeholder="粘贴小红书分享链接..."
+              autocomplete="off"
+            />
+            <button id="extract-btn">提取</button>
+          </div>
+          <div id="progress-container" class="hidden">
+            <div class="progress-stages">
+              <span class="stage" data-stage="fetching">抓取</span>
+              <span class="stage-arrow">→</span>
+              <span class="stage" data-stage="downloading">下载</span>
+              <span class="stage-arrow">→</span>
+              <span class="stage" data-stage="ocr">OCR</span>
+              <span class="stage-arrow">→</span>
+              <span class="stage" data-stage="asr">ASR</span>
+              <span class="stage-arrow">→</span>
+              <span class="stage" data-stage="analyzing">分析</span>
+              <span class="stage-arrow">→</span>
+              <span class="stage" data-stage="done">完成</span>
+            </div>
+            <div class="progress-bar">
+              <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            <p id="status-text" class="status-text"></p>
+          </div>
+          <div id="error-container" class="error hidden"></div>
+        </div>
+
+        <div class="saved-section">
+          <h3>已保存的菜谱</h3>
+          <div id="recipe-list" class="recipe-list">
+            <p class="empty-hint">暂无保存的菜谱</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail Page -->
+      <div id="page-detail" class="page">
+        <button id="back-btn" class="back-btn">← 返回</button>
+        <div id="detail-content"></div>
+      </div>
+
+      <!-- Settings Page -->
+      <div id="page-settings" class="page">
+        <h2>设置</h2>
+        <div class="settings-form">
+          <label>
+            ASR 模型
+            <select id="setting-asr-model">
+              <option value="qwen3-asr-0.6b">qwen3-asr-0.6b (快速)</option>
+              <option value="qwen3-asr-1.7b">qwen3-asr-1.7b (高精度)</option>
+            </select>
+          </label>
+          <label>
+            LLM 模型
+            <select id="setting-llm-model">
+              <option value="deepseek-chat">deepseek-chat</option>
+              <option value="deepseek-reasoner">deepseek-reasoner</option>
+            </select>
+          </label>
+          <label>
+            <input type="checkbox" id="setting-ocr" checked />
+            启用图片 OCR
+          </label>
+          <label>
+            API Key
+            <input
+              type="password"
+              id="setting-api-key"
+              placeholder="留空则使用环境变量或钥匙串"
+              autocomplete="off"
+            />
+          </label>
+          <label>
+            超时时间（秒）
+            <input type="number" id="setting-timeout" value="300" min="30" max="1200" />
+          </label>
+
+          <hr />
+
+          <h3>Cookie 管理</h3>
+          <p class="cookie-status">
+            状态：<span id="cookie-status-text">检测中...</span>
+          </p>
+          <label>
+            导入 Cookie JSON
+            <textarea
+              id="cookie-json-input"
+              placeholder="粘贴浏览器导出的 Cookie JSON 数组..."
+              rows="4"
+            ></textarea>
+          </label>
+          <button id="import-cookies-btn">导入 Cookie</button>
+          <p id="cookie-import-result" class="cookie-result"></p>
+
+          <hr />
+
+          <h3>前置依赖</h3>
+          <div id="prereq-status">
+            <p>检测中...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

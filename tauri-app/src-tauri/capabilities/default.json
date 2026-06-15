@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/open-source-build/main/cli/schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for xhs-recipe",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}
