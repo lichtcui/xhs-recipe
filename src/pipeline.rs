@@ -17,7 +17,7 @@ pub struct ExtractOptions<'a> {
 }
 
 /// Try to detect collection post count from title (e.g., "11道", "10款", "5种").
-fn detect_collection_count(title: &str) -> Option<usize> {
+pub fn detect_collection_count(title: &str) -> Option<usize> {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"(\d+)\s*[道款式个]").expect("invalid regex"));
     let cap = re.captures(title)?;
@@ -26,7 +26,7 @@ fn detect_collection_count(title: &str) -> Option<usize> {
 
 /// Process a collection post by batching per-image OCR texts into separate LLM calls.
 /// Each batch contains at most BATCH_SIZE images, ensuring the output fits within token limits.
-async fn extract_collection(
+pub async fn extract_collection(
     text: &TextContent,
     total: usize,
     model: &str,
@@ -107,7 +107,7 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Vec<Recipe>, PipelineEr
         }
 
         // Step 2: Textify (includes OCR for image posts when send_images is true)
-        let text = crate::textifier::process(&raw, opts.asr_model, opts.send_images).await?;
+        let text = crate::textifier::process_cli(&raw, opts.asr_model, opts.send_images).await?;
 
         // Step 3: Analyze (images already OCR'd into text, no need to pass separately)
         let mut recipes = if opts.send_images && !raw.has_video && !text.image_texts.is_empty() {

@@ -6,14 +6,17 @@
 
 - 抓取小红书食谱帖子的文字和图片
 - 使用 Qwen3-ASR 将视频音频转写为文字
-- 视频画面文字识别（macOS Vision 框架 OCR）
-- 图文笔记图片文字识别（macOS Vision 框架 OCR）
+- 视频画面文字识别（ffmpeg 抽帧 + tesseract OCR）
+- 图文笔记图片文字识别（ffmpeg + tesseract OCR）
 - 通过 DeepSeek LLM 提取结构化食谱数据（食材、步骤、小贴士）
 - 合集多菜谱自动分批提取
 - 输出到终端（彩色）、Markdown 或 JSON
+- 内置 HTTP server（axum），支持 SSE 流式返回
 
 ## 前置依赖
 
+- ffmpeg (`brew install ffmpeg` / `apt install ffmpeg`)
+- tesseract + chi_sim 语言包 (`brew install tesseract`)
 - [Qwen3-ASR](https://github.com/Qwen/Qwen3-ASR)（用于视频转写）：
   ```bash
   cargo install qwen-asr-cli
@@ -105,6 +108,20 @@ cargo run -- list
 cargo run -- show <id>
 ```
 
+### HTTP Server
+
+```bash
+# 启动 server（默认 3000 端口）
+cargo run -p xhs-recipe-server
+
+# 自定义端口
+PORT=8080 cargo run -p xhs-recipe-server
+```
+
+Server 端点：
+- `POST /process` — SSE 流式提取（`fetching → downloading → ocr → asr → result`）
+- `GET /health` — 健康检查
+
 ### 其他命令
 
 ```bash
@@ -122,7 +139,7 @@ URL → Source Adapter → Textifier → Analyzer → Presentation
 ```
 
 1. **Source Adapter** — HTTP 抓取小红书页面，提取文字和图片
-2. **Textifier** — 视频 → reqwest 下载 + symphonia + Qwen3-ASR 转写 + AVFoundation 抽帧 + macOS Vision 帧 OCR；图文笔记 → macOS Vision OCR
+2. **Textifier** — 视频 → reqwest 下载 + symphonia 音频提取 + Qwen3-ASR 转写 + ffmpeg 抽帧 + tesseract OCR；图文笔记 → ffmpeg + tesseract OCR
 3. **Analyzer** — OCR 文字 → DeepSeek API function calling → `Recipe` 模型
 4. **Storage** — 自动保存到 `~/.xhs-recipe/recipes/`，同一 URL 重复提取自动去重
 5. **Presentation** — 渲染到终端、Markdown 或 JSON
@@ -135,7 +152,7 @@ src/
 ├── lib.rs                # 库根模块
 ├── models.rs             # 数据模型（serde）
 ├── pipeline.rs           # 编排：fetch → textify → analyze
-├── textifier.rs          # reqwest + symphonia + Qwen3-ASR + macOS Vision OCR
+├── textifier.rs          # reqwest + symphonia + Qwen3-ASR + ffmpeg/tesseract OCR
 ├── analyzer.rs           # LLM function calling (DeepSeek)
 ├── sources/
 │   ├── base.rs           # URL 路由 & 域检查
@@ -154,7 +171,7 @@ src/
 ## 测试
 
 ```bash
-cargo test                   # 80 lib + 8 bin + 4 integration = 92 tests
+cargo test                   # 全部测试
 cargo test --lib             # 仅库测试
 cargo test --bin xhs-recipe  # 仅 CLI 测试
 cargo audit                  # 安全审计（安装: cargo install cargo-audit）

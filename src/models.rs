@@ -1,5 +1,22 @@
 use serde::{Deserialize, Serialize};
 
+/// Content type classification for splitter rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ContentType {
+    /// Single video post
+    Video,
+    /// Single image post
+    Image,
+    /// Multi-image collection post (e.g. "11道菜")
+    Collection,
+}
+
+impl Default for ContentType {
+    fn default() -> Self {
+        Self::Image
+    }
+}
+
 /// Platform-agnostic raw content returned by source adapters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawContent {
@@ -10,8 +27,12 @@ pub struct RawContent {
     #[serde(default)]
     pub has_video: bool,
     pub video_url: Option<String>,
+    /// Platform source identifier (e.g. "xiaohongshu")
     pub source: String,
     pub source_url: String,
+    /// Content type hint for splitter (auto-detected by scraper)
+    #[serde(default)]
+    pub content_type: ContentType,
 }
 
 /// All media converted to text.
@@ -163,6 +184,7 @@ mod tests {
             video_url: Some("https://example.com/video.mp4".into()),
             source: "xiaohongshu".into(),
             source_url: "https://xhslink.com/test".into(),
+            content_type: Default::default(),
         };
         let json = serde_json::to_string_pretty(&raw).unwrap();
         let deserialized: RawContent = serde_json::from_str(&json).unwrap();

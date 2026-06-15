@@ -1,7 +1,16 @@
-[package]
-name = "xhs-recipe"
+[workspace]
+members = [".", "server"]
+exclude = ["tauri-app/src-tauri"]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
+
+[package]
+name = "xhs-recipe"
+version.workspace = true
+edition.workspace = true
 description = "CLI tool to extract structured Chinese recipes from Xiaohongshu (RedNote) posts"
 
 [dependencies]

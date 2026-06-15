@@ -156,11 +156,41 @@ fn run_setup() {
         missing.push("qwen-asr");
     }
 
-    if which("swiftc").is_some() {
-        println!("  ✓ swiftc 已安装");
+    if which("ffmpeg").is_some() {
+        println!("  ✓ ffmpeg 已安装");
     } else {
-        println!("  ✗ swiftc 未安装（xcode-select --install）");
-        missing.push("swiftc");
+        println!("  ✗ ffmpeg 未安装");
+        println!("    运行: brew install ffmpeg");
+        missing.push("ffmpeg");
+    }
+
+    if which("tesseract").is_some() {
+        println!("  ✓ tesseract 已安装");
+        // Check chi_sim language pack
+        let has_chi_sim = std::process::Command::new("tesseract")
+            .args(["--list-langs"])
+            .output()
+            .ok()
+            .map(|o| {
+                let all = format!("{}\n{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr));
+                all.contains("chi_sim")
+            })
+            .unwrap_or(false);
+        if has_chi_sim {
+            println!("  ✓ tesseract 中文语言包 (chi_sim) 已安装");
+        } else {
+            println!("  ↓ tesseract 中文语言包 (chi_sim) 未安装");
+            println!("    下载 chi_sim.traineddata:");
+            println!("      curl -LO https://github.com/tesseract-ocr/tessdata/raw/main/chi_sim.traineddata");
+            println!("      mv chi_sim.traineddata $(tesseract --print-parameters 2>&1 | grep tessdata | head -1)");
+            missing.push("tesseract-chi-sim");
+        }
+    } else {
+        println!("  ✗ tesseract 未安装");
+        println!("    运行: brew install tesseract");
+        missing.push("tesseract");
     }
 
     println!();

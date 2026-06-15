@@ -3,12 +3,31 @@
 /// Strategy:
 /// 1. __NEXT_DATA__ JSON via HTML parsing (primary)
 /// 2. OG meta tags via HTML parsing (fallback)
-use crate::models::RawContent;
+use crate::models::{ContentType, RawContent};
 use super::super::SourceError;
 use std::time::Duration;
 
 pub async fn scrape(url: &str) -> Result<RawContent, SourceError> {
-    scrape_http(url).await
+    let mut raw = scrape_http(url).await?;
+    // Auto-detect content type
+    raw.content_type = detect_content_type(&raw);
+    Ok(raw)
+}
+
+/// Heuristic content type detection based on scraped data.
+fn detect_content_type(raw: &RawContent) -> ContentType {
+    if raw.has_video {
+        return ContentType::Video;
+    }
+    // Collection detection: multiple images + keywords in title/description
+    if raw.image_urls.len() > 1 {
+        let combined = format!("{} {}", raw.title, raw.text_content);
+        let keywords = ["合集", "第", "道", "款", "种", "家常菜", "做法"];
+        if keywords.iter().any(|k| combined.contains(*k)) {
+            return ContentType::Collection;
+        }
+    }
+    ContentType::Image
 }
 
 /// reqwest direct HTTP client
@@ -59,6 +78,7 @@ async fn scrape_http(url: &str) -> Result<RawContent, SourceError> {
                     video_url: parsed.video_url,
                     source: "xiaohongshu".into(),
                     source_url: url.to_string(),
+                    content_type: Default::default(),
                 });
             }
         }
@@ -72,6 +92,7 @@ async fn scrape_http(url: &str) -> Result<RawContent, SourceError> {
             video_url: None,
             source: "xiaohongshu".into(),
             source_url: url.to_string(),
+            content_type: Default::default(),
         });
     }
     Err(SourceError::FetchFailed("无法从 HTML 中提取数据".into()))
