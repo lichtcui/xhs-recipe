@@ -116,13 +116,21 @@ pub async fn extract(
 
     // Auto-save only substantial food recipes
     let store = LocalStorage::default();
+    let total = recipes.len();
+    let food_count = recipes.iter().filter(|r| r.is_food && r.is_substantial()).count();
     for recipe in &recipes {
         if recipe.is_food && recipe.is_substantial() {
             let _ = store.save(recipe).await;
         }
     }
 
-    emit("done", &format!("{} 个菜谱", recipes.len()));
+    if total == 0 {
+        emit("done", "未提取到任何菜谱");
+    } else if food_count == 0 {
+        emit("done", &format!("提取完成，但未识别到有效菜谱（共 {} 条）", total));
+    } else {
+        emit("done", &format!("已保存 {} 个菜谱", food_count));
+    }
     Ok(recipes)
 }
 
