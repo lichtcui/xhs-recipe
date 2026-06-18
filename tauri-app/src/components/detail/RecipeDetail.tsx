@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import IngredientList from "./IngredientList";
 import StepList from "./StepList";
 import TipList from "./TipList";
@@ -34,7 +34,7 @@ export default function RecipeDetail({ recipe, onBack }: RecipeDetailProps) {
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <CardTitle className="text-xl text-xhs">
-              🍖 {recipe.name}
+              {recipe.name}
             </CardTitle>
             {recipe.total_time && (
               <Badge variant="secondary" className="ml-auto text-xs font-normal">
@@ -44,12 +44,12 @@ export default function RecipeDetail({ recipe, onBack }: RecipeDetailProps) {
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-1 pt-0">
+        <CardContent className="space-y-3 pt-0">
           {!recipe.is_food && (
-            <Alert variant="destructive" className="mb-3 bg-amber-50 border-amber-200 text-amber-800">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                此内容与美食无关
+            <Alert>
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800">
+                ⚠ 此内容与美食无关
                 {recipe.reason ? `: ${recipe.reason}` : ""}
               </AlertDescription>
             </Alert>
@@ -72,7 +72,7 @@ export default function RecipeDetail({ recipe, onBack }: RecipeDetailProps) {
           )}
 
           {equipment.length > 0 && (
-            <div className="text-sm text-gray-700 leading-relaxed mb-3">
+            <div className="text-sm text-gray-700 leading-relaxed">
               <span className="font-bold text-gray-600">🔧 器具</span>{" "}
               · {equipment.join("、")}
             </div>

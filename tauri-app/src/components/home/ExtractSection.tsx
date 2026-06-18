@@ -1,12 +1,19 @@
 import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { extractRecipe, onExtractProgress } from "@/lib/tauri";
-import { classifyError, STAGE_ORDER, STAGE_PERCENT, STAGE_LABELS } from "@/lib/helpers";
+import {
+  classifyError,
+  STAGE_ORDER,
+  STAGE_PERCENT,
+  STAGE_LABELS,
+} from "@/lib/helpers";
 import type { Recipe } from "@/types/recipe";
 
 interface ExtractSectionProps {
@@ -22,7 +29,6 @@ export default function ExtractSection({ onExtracted }: ExtractSectionProps) {
   const [percent, setPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Listen to progress events
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     onExtractProgress((event) => {
@@ -66,7 +72,10 @@ export default function ExtractSection({ onExtracted }: ExtractSectionProps) {
 
   return (
     <Card>
-      <CardContent className="pt-6 space-y-4">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg">提取菜谱</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-0">
         <div className="flex gap-2">
           <Input
             placeholder="粘贴小红书分享链接..."
@@ -85,7 +94,6 @@ export default function ExtractSection({ onExtracted }: ExtractSectionProps) {
           </Button>
         </div>
 
-        {/* Progress area */}
         {extracting && stage && (
           <div className="space-y-3">
             <div className="flex items-center gap-1 flex-wrap">
@@ -101,8 +109,8 @@ export default function ExtractSection({ onExtracted }: ExtractSectionProps) {
                       i < stageIdx
                         ? "default"
                         : i === stageIdx
-                        ? "destructive"
-                        : "secondary"
+                          ? "destructive"
+                          : "secondary"
                     }
                     className={
                       i < stageIdx ? "bg-green-500 hover:bg-green-500" : ""
@@ -120,11 +128,11 @@ export default function ExtractSection({ onExtracted }: ExtractSectionProps) {
           </div>
         )}
 
-        {/* Error */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 whitespace-pre-wrap">
-            {error}
-          </div>
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
       </CardContent>
     </Card>

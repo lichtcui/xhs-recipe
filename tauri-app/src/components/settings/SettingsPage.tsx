@@ -1,3 +1,4 @@
+import { type ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,25 @@ import { useSettings } from "@/hooks/useSettings";
 import CookieManager from "./CookieManager";
 import PrerequisiteCheck from "./PrerequisiteCheck";
 
+function FormField({
+  id,
+  label,
+  children,
+}: {
+  id: string;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-sm font-medium">
+        {label}
+      </Label>
+      {children}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
 
@@ -25,15 +45,14 @@ export default function SettingsPage() {
         <CardHeader className="pb-4">
           <CardTitle className="text-lg">提取配置</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-5">
           {/* ASR Model */}
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">ASR 模型</Label>
+          <FormField id="asr-model" label="ASR 模型">
             <Select
               value={settings.asrModel}
               onValueChange={(v) => updateSettings({ asrModel: v })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="asr-model">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -45,16 +64,15 @@ export default function SettingsPage() {
                 </SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </FormField>
 
           {/* LLM Model */}
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">LLM 模型</Label>
+          <FormField id="llm-model" label="LLM 模型">
             <Select
               value={settings.llmModel}
               onValueChange={(v) => updateSettings({ llmModel: v })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="llm-model">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -64,33 +82,36 @@ export default function SettingsPage() {
                 </SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </FormField>
 
           {/* OCR Toggle */}
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium">启用图片 OCR</Label>
+            <Label htmlFor="ocr-toggle" className="text-sm font-medium cursor-pointer">
+              启用图片 OCR
+            </Label>
             <Switch
+              id="ocr-toggle"
               checked={settings.ocrImages}
               onCheckedChange={(v) => updateSettings({ ocrImages: v })}
             />
           </div>
 
           {/* API Key */}
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">API Key</Label>
+          <FormField id="api-key" label="API Key">
             <Input
+              id="api-key"
               type="password"
               placeholder="留空则使用环境变量或钥匙串"
               value={settings.apiKey}
               onChange={(e) => updateSettings({ apiKey: e.target.value })}
               autoComplete="off"
             />
-          </div>
+          </FormField>
 
           {/* Timeout */}
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">超时时间（秒）</Label>
+          <FormField id="timeout" label="超时时间（秒）">
             <Input
+              id="timeout"
               type="number"
               min={30}
               max={1200}
@@ -99,7 +120,7 @@ export default function SettingsPage() {
                 updateSettings({ timeout: parseInt(e.target.value) || 300 })
               }
             />
-          </div>
+          </FormField>
 
           <Separator />
 

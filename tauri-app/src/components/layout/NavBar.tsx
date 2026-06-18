@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface NavBarProps {
   currentPage: string;
@@ -7,29 +7,28 @@ interface NavBarProps {
 
 export default function NavBar({ currentPage, onNavigate }: NavBarProps) {
   return (
-    <nav className="flex gap-0 bg-white border-b border-border px-4">
-      <Button
-        variant="ghost"
-        className={`rounded-none border-b-2 px-5 py-3 h-auto text-[15px] ${
-          currentPage === "home"
-            ? "border-xhs text-xhs"
-            : "border-transparent text-muted-foreground hover:text-foreground"
-        }`}
-        onClick={() => onNavigate("home")}
+    <nav className="bg-white border-b px-4">
+      <Tabs
+        value={currentPage}
+        onValueChange={(v) => {
+          if (v === "home" || v === "settings") onNavigate(v);
+        }}
       >
-        首页
-      </Button>
-      <Button
-        variant="ghost"
-        className={`rounded-none border-b-2 px-5 py-3 h-auto text-[15px] ${
-          currentPage === "settings"
-            ? "border-xhs text-xhs"
-            : "border-transparent text-muted-foreground hover:text-foreground"
-        }`}
-        onClick={() => onNavigate("settings")}
-      >
-        设置
-      </Button>
+        <TabsList className="h-auto gap-0 rounded-none bg-transparent p-0">
+          <TabsTrigger
+            value="home"
+            className="rounded-none border-b-2 border-transparent px-5 py-3 text-[15px] data-[state=active]:border-xhs data-[state=active]:text-xhs data-[state=active]:shadow-none"
+          >
+            首页
+          </TabsTrigger>
+          <TabsTrigger
+            value="settings"
+            className="rounded-none border-b-2 border-transparent px-5 py-3 text-[15px] data-[state=active]:border-xhs data-[state=active]:text-xhs data-[state=active]:shadow-none"
+          >
+            设置
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
     </nav>
   );
 }

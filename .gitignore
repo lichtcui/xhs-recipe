@@ -2,3 +2,12 @@
 .DS_Store
 # Rust
 target/
+# Node / JS
+node_modules/
+# Agent workspace files
+.agents/
+.mcp.json
+skills-lock.json
+# Root npm (not a JS project, only used for shadcn skill)
+package.json
+package-lock.json
