@@ -114,10 +114,10 @@ pub async fn extract(
         recipe.source_url = raw.source_url.clone();
     }
 
-    // Auto-save only food recipes
+    // Auto-save only substantial food recipes
     let store = LocalStorage::default();
     for recipe in &recipes {
-        if recipe.is_food {
+        if recipe.is_food && recipe.is_substantial() {
             let _ = store.save(recipe).await;
         }
     }
