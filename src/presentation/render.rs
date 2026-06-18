@@ -1,6 +1,16 @@
 use crate::models::Recipe;
 use colored::*;
 
+/// Returns true if the amount string is a generic qualifier with no real information.
+fn is_generic_amount(s: &str) -> bool {
+    matches!(s.trim(), "适量" | "少许" | "适量即可" | "少量" | "若干" | "一点")
+}
+
+/// Formats an amount string, skipping generic qualifiers.
+fn fmt_amount(amt: &str) -> Option<String> {
+    if is_generic_amount(amt) { None } else { Some(format!(" {}", amt)) }
+}
+
 /// Render multiple recipes to terminal with dividers between them.
 pub fn render_terminal_multi(recipes: &[Recipe]) {
     if recipes.is_empty() {
@@ -28,41 +38,49 @@ pub fn render_terminal_multi(recipes: &[Recipe]) {
         println!("  📖 {} / {}", format!("第{}个", i + 1).bold(), total);
         render_terminal(recipe);
     }
+    println!("  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 
-/// Render recipe to terminal with ANSI colors, matching Python `rich` output.
+/// Render recipe to terminal with ANSI colors, compact layout.
 pub fn render_terminal(recipe: &Recipe) {
     if !recipe.is_food {
         render_not_food(recipe);
         return;
     }
 
-    println!();
-    println!("  🍖 {}", recipe.name.green().bold());
-    if let Some(ref t) = recipe.total_time {
-        println!("  ⏱ {}", t.yellow());
-    }
+    // Name and total time on the same line
+    let time_str = recipe.total_time.as_ref()
+        .map(|t| format!("  ⏱ {}", t.yellow()))
+        .unwrap_or_default();
+    println!("  🍖 {}{}", recipe.name.green().bold(), time_str);
 
     if !recipe.ingredients.is_empty() {
-        println!("\n  🥩 {}", "食材".bold());
-        for ing in &recipe.ingredients {
-            let mut parts = vec![format!("· {}", ing.name.cyan())];
+        println!();
+        println!("  🥩 {}", "食材".bold());
+        let items: Vec<String> = recipe.ingredients.iter().map(|ing| {
+            let mut s = ing.name.clone();
             if let Some(ref amt) = ing.amount {
-                parts.push(format!(" {}", amt));
+                if let Some(fa) = fmt_amount(amt) {
+                    s.push_str(&fa);
+                }
             }
             if let Some(ref prep) = ing.prep {
-                parts.push(format!("（{}）", prep));
+                s.push_str(&format!("（{}）", prep));
             }
-            println!("    {}", parts.concat());
-        }
+            s
+        }).collect();
+        println!("    · {}", items.join("、"));
     }
 
     if !recipe.seasonings.is_empty() {
-        println!("\n  🧂 {}", "调料".bold());
+        println!();
+        println!("  🧂 {}", "调料".bold());
         let items: Vec<String> = recipe.seasonings.iter().map(|s| {
             let mut line = s.name.clone();
             if let Some(ref amt) = s.amount {
-                line.push_str(&format!(" {}", amt));
+                if let Some(fa) = fmt_amount(amt) {
+                    line.push_str(&fa);
+                }
             }
             if let Some(ref prep) = s.prep {
                 line.push_str(&format!("（{}）", prep));
@@ -73,31 +91,34 @@ pub fn render_terminal(recipe: &Recipe) {
     }
 
     if !recipe.equipment.is_empty() {
-        println!("\n  🔧 {}", "器具".bold());
+        println!();
+        println!("  🔧 {}", "器具".bold());
         println!("    · {}", recipe.equipment.join("、"));
     }
 
     if !recipe.steps.is_empty() {
-        println!("\n  📝 {}", "步骤".bold());
+        println!();
+        println!("  📝 {}", "步骤".bold());
         for (i, step) in recipe.steps.iter().enumerate() {
             let fallback = format!("{}.", i + 1);
             let num = crate::STEP_NUMS.get(i).copied().unwrap_or(&fallback);
             let time_str = step.time.as_ref().map_or(String::new(), |t| format!("（{}）", t.yellow()));
-            println!("\n  {} {} {}", num.bold(), step.title.bold(), time_str);
+            println!("  {} {} {}", num.bold(), step.title.bold(), time_str);
             for line in step.content.lines() {
                 let trimmed = line.trim();
                 if !trimmed.is_empty() {
-                    println!("     {}", trimmed);
+                    println!("    {}", trimmed);
                 }
             }
         }
     }
 
     if !recipe.tips.is_empty() {
+        println!();
         let tips_short: Vec<String> = recipe.tips.iter()
             .map(|t| t.trim_end_matches('。').to_string())
             .collect();
-        println!("\n  💡 {}", "小贴士".bold());
+        println!("  💡 {}", "小贴士".bold());
         println!("    {}", tips_short.join(" · "));
     }
 }

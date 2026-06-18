@@ -233,21 +233,33 @@ body {
   color: #e54d42;
   cursor: pointer;
   padding: 8px 0;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .back-btn:hover { text-decoration: underline; }
 
-.recipe-title {
-  font-size: 24px;
-  margin-bottom: 8px;
+.detail-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.detail-icon {
+  font-size: 18px;
+}
+
+.detail-title {
+  font-size: 22px;
+  font-weight: 700;
   color: #e54d42;
 }
 
-.recipe-time {
-  color: #888;
-  font-size: 14px;
-  margin-bottom: 16px;
+.detail-time {
+  font-size: 13px;
+  color: #999;
+  margin-left: auto;
 }
 
 .not-food {
@@ -259,26 +271,69 @@ body {
   margin-bottom: 16px;
 }
 
-#detail-content h3 {
-  font-size: 17px;
-  margin: 20px 0 8px;
+.detail-section {
+  margin-bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.section-icon {
+  font-size: 15px;
+}
+
+.section-label {
+  font-weight: 700;
+  font-size: 15px;
   color: #555;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 4px;
+  margin-right: 4px;
 }
 
-.ingredient-list, .step-list {
-  padding-left: 20px;
-}
-
-.ingredient-list li, .step-list li {
-  margin-bottom: 6px;
+.inline-list {
   font-size: 14px;
+  color: #444;
+  line-height: 1.7;
+  width: 100%;
+  padding-left: 24px;
 }
 
-.step-list li p {
+/* Steps */
+.step-item {
+  margin-bottom: 10px;
+  padding-left: 24px;
+}
+
+.step-head {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.step-num {
+  font-weight: 700;
+  font-size: 15px;
+  color: #e54d42;
+}
+
+.step-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+}
+
+.step-time {
+  font-size: 13px;
+  color: #999;
+}
+
+.step-content {
+  font-size: 14px;
   color: #666;
   margin-top: 2px;
+  padding-left: 20px;
+  line-height: 1.6;
 }
 
 /* ── Settings Page ────────────────────────── */

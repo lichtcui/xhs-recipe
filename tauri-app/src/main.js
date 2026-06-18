@@ -267,46 +267,82 @@ function showRecipeDetail(recipe) {
   const tips = recipe.tips || [];
   const equipment = recipe.equipment || [];
 
+  // ── Title & Time ──
   let html = `
-    <h2 class="recipe-title">${escHtml(recipe.name)}</h2>
-    ${recipe.total_time ? `<p class="recipe-time">⏱ ${escHtml(recipe.total_time)}</p>` : ""}
-    ${!recipe.is_food ? `<p class="not-food">非美食内容${recipe.reason ? `: ${escHtml(recipe.reason)}` : ""}</p>` : ""}
+    <div class="detail-header">
+      <span class="detail-icon">🍖</span>
+      <span class="detail-title">${escHtml(recipe.name)}</span>
+      ${recipe.total_time ? `<span class="detail-time">⏱ ${escHtml(recipe.total_time)}</span>` : ""}
+    </div>
+    ${!recipe.is_food ? `<p class="not-food">⚠ 非美食内容${recipe.reason ? `: ${escHtml(recipe.reason)}` : ""}</p>` : ""}
   `;
 
+  // ── Ingredients (inline, comma-separated) ──
   if (ingredients.length) {
-    html += `<h3>食材</h3><ul class="ingredient-list">`;
-    ingredients.forEach((i) => {
-      html += `<li><strong>${escHtml(i.name)}</strong>${i.amount ? ` — ${escHtml(i.amount)}` : ""}${i.prep ? `（${escHtml(i.prep)}）` : ""}</li>`;
+    const items = ingredients.map((i) => {
+      let s = i.name;
+      if (i.amount) {
+        const fa = fmtAmount(i.amount);
+        if (fa) s += fa;
+      }
+      if (i.prep) s += `（${i.prep}）`;
+      return escHtml(s);
     });
-    html += `</ul>`;
+    html += `<div class="detail-section">
+      <span class="section-icon">🥩</span><span class="section-label">食材</span>
+      <div class="inline-list">· ${items.join("、")}</div>
+    </div>`;
   }
 
+  // ── Seasonings (inline, comma-separated) ──
   if (seasonings.length) {
-    html += `<h3>调料</h3><ul class="ingredient-list">`;
-    seasonings.forEach((s) => {
-      html += `<li><strong>${escHtml(s.name)}</strong>${s.amount ? ` — ${escHtml(s.amount)}` : ""}</li>`;
+    const items = seasonings.map((s) => {
+      let line = s.name;
+      if (s.amount) {
+        const fa = fmtAmount(s.amount);
+        if (fa) line += fa;
+      }
+      if (s.prep) line += `（${s.prep}）`;
+      return escHtml(line);
     });
-    html += `</ul>`;
+    html += `<div class="detail-section">
+      <span class="section-icon">🧂</span><span class="section-label">调料</span>
+      <div class="inline-list">· ${items.join("、")}</div>
+    </div>`;
   }
 
+  // ── Equipment ──
   if (equipment.length) {
-    html += `<h3>器具</h3><p>${equipment.map((e) => escHtml(e)).join("、")}</p>`;
+    html += `<div class="detail-section">
+      <span class="section-icon">🔧</span><span class="section-label">器具</span>
+      <div class="inline-list">· ${equipment.map((e) => escHtml(e)).join("、")}</div>
+    </div>`;
   }
 
+  // ── Steps ──
   if (steps.length) {
-    html += `<h3>步骤</h3><ol class="step-list">`;
-    steps.forEach((s) => {
-      html += `<li><strong>${escHtml(s.title)}</strong>${s.time ? ` (${escHtml(s.time)})` : ""}<p>${escHtml(s.content)}</p></li>`;
+    html += `<div class="detail-section">
+      <span class="section-icon">📝</span><span class="section-label">步骤</span>
+    </div>`;
+    steps.forEach((s, i) => {
+      const num = STEP_NUMS[i] || `${i + 1}.`;
+      html += `<div class="step-item">
+        <div class="step-head">
+          <span class="step-num">${num}</span>
+          <span class="step-title">${escHtml(s.title)}</span>
+          ${s.time ? `<span class="step-time">（${escHtml(s.time)}）</span>` : ""}
+        </div>
+        <div class="step-content">${escHtml(s.content)}</div>
+      </div>`;
     });
-    html += `</ol>`;
   }
 
+  // ── Tips (inline, "·" separated) ──
   if (tips.length) {
-    html += `<h3>小贴士</h3><ul>`;
-    tips.forEach((t) => {
-      html += `<li>${escHtml(t)}</li>`;
-    });
-    html += `</ul>`;
+    html += `<div class="detail-section">
+      <span class="section-icon">💡</span><span class="section-label">小贴士</span>
+      <div class="inline-list">${tips.map((t) => escHtml(t.trimEnd("。"))).join(" · ")}</div>
+    </div>`;
   }
 
   el.innerHTML = html;
@@ -363,6 +399,13 @@ document.getElementById("import-cookies-btn").addEventListener("click", async ()
 });
 
 // ── Helpers ───────────────────────────────────────────
+
+const STEP_NUMS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+const GENERIC_AMOUNTS = new Set(["适量", "少许", "适量即可", "少量", "若干", "一点"]);
+
+function fmtAmount(amt) {
+  return amt && !GENERIC_AMOUNTS.has(amt.trim()) ? ` ${amt}` : "";
+}
 
 function escHtml(s) {
   if (!s) return "";
