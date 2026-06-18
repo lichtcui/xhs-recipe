@@ -118,25 +118,39 @@ impl Recipe {
     pub fn is_substantial(&self) -> bool {
         let patterns = [
             "待补充", "信息补充", "等待补充", "信息有限",
-            "暂未提供", "暂无", "无具体", "未提及",
+            "暂未提供", "暂无", "无具体", "未提及", "未提供",
         ];
 
+        // Name must be non-empty and not placeholder
         if self.name.is_empty() || patterns.iter().any(|p| self.name.contains(p)) {
             return false;
         }
 
-        let real_ingredient = |i: &Ingredient| -> bool {
-            !i.name.is_empty() && !patterns.iter().any(|p| i.name.contains(p))
+        // Check if an ingredient/seasoning has real content (including amount/prep)
+        let has_field = |field: &str| !field.is_empty() && !patterns.iter().any(|p| field.contains(p));
+        let ing_ok = |i: &Ingredient| -> bool {
+            has_field(&i.name)
+                && i.amount.as_deref().map_or(true, |a| has_field(a))
+                && i.prep.as_deref().map_or(true, |p| has_field(p))
         };
-        let has_ingredients = self.ingredients.iter().any(real_ingredient);
-        let has_seasonings = self.seasonings.iter().any(real_ingredient);
+
+        let has_ingredients = self.ingredients.iter().any(ing_ok);
+        let has_seasonings = self.seasonings.iter().any(ing_ok);
         let has_steps = self.steps.iter().any(|s| {
-            !s.content.is_empty()
-                && !patterns.iter().any(|p| s.content.contains(p))
-                && !patterns.iter().any(|p| s.title.contains(p))
+            has_field(&s.content)
+                && has_field(&s.title)
+                && s.time.as_deref().map_or(true, |t| has_field(t))
         });
 
-        has_ingredients || has_seasonings || has_steps
+        // Fallback: check total meaningful text length
+        let total_text: String = [
+            self.ingredients.iter().map(|i| i.name.as_str()).collect::<Vec<_>>().join(" "),
+            self.steps.iter().map(|s| s.content.as_str()).collect::<Vec<_>>().join(" "),
+        ].concat();
+        // Need at least 15 characters of concrete ingredient + step text
+        let has_min_content = total_text.chars().filter(|c| !c.is_whitespace()).count() >= 15;
+
+        (has_ingredients || has_seasonings || has_steps) && has_min_content
     }
 }
 
@@ -223,42 +237,52 @@ mod tests {
 
     #[test]
     fn test_is_substantial_rejects_placeholder() {
-        let placeholder = Recipe {
+        // Case 1: obvious placeholder text
+        let p1 = Recipe {
             name: "食材信息待补充".into(),
             ingredients: vec![Ingredient {
                 name: "食材信息待补充".into(),
-                amount: None,
-                prep: None,
-                category: None,
+                amount: None, prep: None, category: None,
             }],
-            seasonings: vec![],
-            equipment: vec![],
             steps: vec![Step {
                 title: "等待信息补充".into(),
                 time: None,
-                content: "该菜谱来源于小红书笔记，但笔记正文未提供详细步骤信息".into(),
+                content: "该菜谱来源于小红书笔记".into(),
             }],
-            tips: vec!["信息有限，建议参考小红书原笔记获取完整菜谱".into()],
             ..Default::default()
         };
-        assert!(!placeholder.is_substantial());
+        assert!(!p1.is_substantial());
 
+        // Case 2: vague recipe (ingredient is just "食材", step mentions "未提及")
+        let p2 = Recipe {
+            name: "春日菜饭".into(),
+            ingredients: vec![Ingredient {
+                name: "食材".into(),
+                amount: Some("具体种类未提及".into()),
+                prep: None, category: None,
+            }],
+            steps: vec![Step {
+                title: "准备".into(),
+                time: Some("未提及".into()),
+                content: "准备春日时蔬和米饭等食材".into(),
+            }],
+            ..Default::default()
+        };
+        assert!(!p2.is_substantial(), "vague recipe with placeholder amount/time should be rejected");
+
+        // Case 3: real recipe
         let real = Recipe {
             name: "排骨汤".into(),
             ingredients: vec![Ingredient {
                 name: "排骨".into(),
                 amount: Some("500g".into()),
-                prep: None,
-                category: None,
+                prep: None, category: None,
             }],
-            seasonings: vec![],
-            equipment: vec![],
             steps: vec![Step {
                 title: "焯水".into(),
                 time: Some("5分钟".into()),
                 content: "排骨冷水下锅，煮开后撇去浮沫".into(),
             }],
-            tips: vec![],
             ..Default::default()
         };
         assert!(real.is_substantial());
