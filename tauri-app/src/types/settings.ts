@@ -15,7 +15,7 @@ export interface ExtractSettingsPayload {
 }
 
 export const SETTINGS_DEFAULTS: AppSettings = {
-  asrModel: "qwen3-asr-0.6b",
+  asrModel: "qwen3-asr-1.7b",
   llmModel: "deepseek-chat",
   ocrImages: true,
   apiKey: "",

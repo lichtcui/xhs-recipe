@@ -21,7 +21,7 @@ enum Command {
         output: Option<PathBuf>,
         #[arg(short, long, default_value = "deepseek-chat")]
         model: String,
-        #[arg(long, default_value = "qwen3-asr-0.6b")]
+        #[arg(long, default_value = "qwen3-asr-1.7b")]
         asr_model: String,
         #[arg(long = "no-images", action = clap::ArgAction::SetFalse)]
         images: bool,
