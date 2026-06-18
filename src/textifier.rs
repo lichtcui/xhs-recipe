@@ -477,7 +477,7 @@ var sampleTimes: [CMTime] = []
 var current: Double = 0
 while current < durationSeconds {
     sampleTimes.append(CMTime(seconds: current, preferredTimescale: 600))
-    current += 3
+    current += 0.5
 }
 
 let request = VNRecognizeTextRequest()
@@ -595,7 +595,7 @@ fn ocr_video_frames(video_path: &Path) -> Result<Option<String>, TextifierError>
     let mut last_text = String::new();
 
     for text in &frame_texts {
-        if text.len() < 5 {
+        if text.len() < 2 {
             continue;
         }
         if !last_text.is_empty() && text_similar(text, &last_text) {
