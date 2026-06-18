@@ -114,11 +114,16 @@ fn extract_next_data_from_html(html: &str) -> Option<serde_json::Value> {
             .replace("&amp;", "&");
         return serde_json::from_str::<serde_json::Value>(&raw).ok();
     }
+    // Fallback: __INITIAL_STATE__ — captures everything between ={ and }</script>
+    // Greedy match because the JSON ends right before </script>.
     let re2 = RE2.get_or_init(|| {
-        regex::Regex::new(r"(?s)window\.__INITIAL_STATE__\s*=\s*(\{.*?\});").expect("regex: initial state")
+        regex::Regex::new(r"(?s)window\.__INITIAL_STATE__\s*=\s*(\{.*\})\s*;?\s*</script>").expect("regex: initial state")
     });
     if let Some(cap) = re2.captures(html) {
-        return serde_json::from_str::<serde_json::Value>(cap.get(1)?.as_str()).ok();
+        let raw = cap.get(1)?.as_str();
+        // Sanitize JS-specific constructs
+        let cleaned = raw.replace(":undefined", ":null");
+        return serde_json::from_str::<serde_json::Value>(&cleaned).ok();
     }
     None
 }
@@ -187,25 +192,53 @@ fn note_to_pagedata(note: &serde_json::Value) -> PageData {
             .and_then(|v| v.get("media"))
             .and_then(|m| m.get("stream"))
             .and_then(|s| {
-                s.get("h264")
-                    .and_then(|a| a.as_array())
-                    .and_then(|a| a.first())
-                    .and_then(|e| e.get("master_url").and_then(|u| u.as_str()))
-                    .or_else(|| {
-                        s.get("h265")
-                            .and_then(|a| a.as_array())
-                            .and_then(|a| a.first())
-                            .and_then(|e| e.get("master_url").and_then(|u| u.as_str()))
-                    })
+                // Try master_url first, fall back to backupUrls for each codec
+                let try_codec = |codec: &str| -> Option<String> {
+                    let arr = s.get(codec)?.as_array()?;
+                    let first = arr.first()?;
+                    // master_url
+                    if let Some(u) = first.get("master_url").and_then(|u| u.as_str()) {
+                        if !u.is_empty() && u != "??" {
+                            return Some(u.to_string());
+                        }
+                    }
+                    // fallback: backupUrls
+                    if let Some(backups) = first.get("backupUrls").and_then(|b| b.as_array()) {
+                        for bu in backups {
+                            if let Some(u) = bu.as_str() {
+                                if !u.is_empty() {
+                                    return Some(u.to_string());
+                                }
+                            }
+                        }
+                    }
+                    None
+                };
+                try_codec("h264")
+                    .or_else(|| try_codec("h265"))
             })
             .map(String::from),
     }
 }
 
 fn parse_note_from_state(state: &serde_json::Value) -> Result<PageData, ()> {
-    // Top-level keys (discovery items, user profile, etc.)
-    if let Some(note) = state.get("note") {
-        return Ok(note_to_pagedata(note));
+    // INITIAL_STATE structure: state.note.noteDetailMap[firstKey].note
+    if let Some(note_wrapper) = state.get("note") {
+        if let Some(nd_map) = note_wrapper.get("noteDetailMap") {
+            if let Some(obj) = nd_map.as_object() {
+                if let Some((_key, nd)) = obj.iter().next() {
+                    if let Some(inner_note) = nd.get("note") {
+                        if inner_note.get("title").and_then(|t| t.as_str()).map_or(false, |t| !t.is_empty()) {
+                            return Ok(note_to_pagedata(inner_note));
+                        }
+                    }
+                }
+            }
+        }
+        // Fallback: note data is directly under state.note
+        if note_wrapper.get("title").and_then(|t| t.as_str()).map_or(false, |t| !t.is_empty()) {
+            return Ok(note_to_pagedata(note_wrapper));
+        }
     }
     for key in &["noteDetail", "noteData", "currentNote"] {
         if let Some(note) = state.get(*key) {
