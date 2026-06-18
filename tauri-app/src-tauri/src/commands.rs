@@ -114,10 +114,12 @@ pub async fn extract(
         recipe.source_url = raw.source_url.clone();
     }
 
-    // Auto-save
+    // Auto-save only food recipes
     let store = LocalStorage::default();
     for recipe in &recipes {
-        let _ = store.save(recipe).await;
+        if recipe.is_food {
+            let _ = store.save(recipe).await;
+        }
     }
 
     emit("done", &format!("{} 个菜谱", recipes.len()));

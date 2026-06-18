@@ -88,9 +88,12 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_mod
         Ok(recipes) => {
             xhs_recipe::presentation::render::render_terminal_multi(&recipes);
 
-            // Auto-save each recipe to local storage
+            // Auto-save only food recipes to local storage
             let mut saved_ids: Vec<String> = Vec::new();
             for recipe in &recipes {
+                if !recipe.is_food {
+                    continue;
+                }
                 match rt.block_on(store.save(recipe)) {
                     Ok(id) => saved_ids.push(id),
                     Err(e) => {

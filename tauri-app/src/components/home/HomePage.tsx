@@ -13,9 +13,10 @@ export default function HomePage({ onViewRecipe }: HomePageProps) {
   const handleExtracted = useCallback(
     (recipes: Recipe[]) => {
       setRefreshKey((k) => k + 1);
-      // Navigate to first recipe detail
-      if (recipes.length > 0) {
-        setTimeout(() => onViewRecipe(recipes[0]), 1500);
+      // Only navigate to food recipes
+      const foodRecipes = recipes.filter((r) => r.is_food);
+      if (foodRecipes.length > 0) {
+        setTimeout(() => onViewRecipe(foodRecipes[0]), 1500);
       }
     },
     [onViewRecipe]
