@@ -192,27 +192,25 @@ fn note_to_pagedata(note: &serde_json::Value) -> PageData {
             .and_then(|v| v.get("media"))
             .and_then(|m| m.get("stream"))
             .and_then(|s| {
-                // Try master_url first, fall back to backupUrls for each codec
+                // Try master_url/masterUrl first, fall back to backupUrls
                 let try_codec = |codec: &str| -> Option<String> {
                     let arr = s.get(codec)?.as_array()?;
                     let first = arr.first()?;
-                    // master_url
-                    if let Some(u) = first.get("master_url").and_then(|u| u.as_str()) {
-                        if !u.is_empty() && u != "??" {
-                            return Some(u.to_string());
-                        }
-                    }
-                    // fallback: backupUrls
-                    if let Some(backups) = first.get("backupUrls").and_then(|b| b.as_array()) {
-                        for bu in backups {
-                            if let Some(u) = bu.as_str() {
-                                if !u.is_empty() {
-                                    return Some(u.to_string());
-                                }
+                    // Try both snake_case and camelCase for master URL
+                    for key in &["master_url", "masterUrl"] {
+                        if let Some(u) = first.get(*key).and_then(|v| v.as_str()) {
+                            if !u.is_empty() && u != "??" {
+                                return Some(u.to_string());
                             }
                         }
                     }
-                    None
+                    // fallback: backupUrls
+                    first.get("backupUrls")
+                        .and_then(|b| b.as_array())
+                        .and_then(|arr| arr.iter().find_map(|bu| {
+                            let u = bu.as_str()?;
+                            if !u.is_empty() { Some(u.to_string()) } else { None }
+                        }))
                 };
                 try_codec("h264")
                     .or_else(|| try_codec("h265"))
