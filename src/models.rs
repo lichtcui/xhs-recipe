@@ -98,10 +98,6 @@ pub struct Recipe {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub difficulty: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub servings: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_text: Option<String>,
 }
 
@@ -126,8 +122,6 @@ impl Default for Recipe {
             cover_image_url: None,
             image_urls: None,
             tags: None,
-            difficulty: None,
-            servings: None,
             raw_text: None,
         }
     }

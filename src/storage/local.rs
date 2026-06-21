@@ -151,7 +151,6 @@ impl Storage for LocalStorage {
                     is_food: stored.recipe.is_food,
                     cover_image_url: stored.recipe.cover_image_url.clone(),
                     total_time: stored.recipe.total_time.clone(),
-                    difficulty: stored.recipe.difficulty.clone(),
                     tags: stored.recipe.tags.clone().unwrap_or_default(),
                 })
             })

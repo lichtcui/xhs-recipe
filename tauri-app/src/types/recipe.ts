@@ -26,8 +26,6 @@ export interface Recipe {
   cover_image_url?: string;
   image_urls?: string[];
   tags?: string[];
-  difficulty?: string;
-  servings?: number;
   raw_text?: string;
 }
 
@@ -39,7 +37,6 @@ export interface RecipeSummary {
   is_food: boolean;
   cover_image_url?: string;
   total_time?: string;
-  difficulty?: string;
   tags: string[];
 }
 

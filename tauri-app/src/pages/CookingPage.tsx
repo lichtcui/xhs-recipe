@@ -87,8 +87,6 @@ export default function CookingPage({ recipe, onBackToInspire }: CookingPageProp
       {/* Cooking info */}
       <CookingInfoBar
         totalTime={recipe.total_time}
-        difficulty={recipe.difficulty}
-        servings={recipe.servings}
       />
 
       {/* Frame gallery (original images) */}

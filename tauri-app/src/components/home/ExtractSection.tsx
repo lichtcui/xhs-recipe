@@ -29,19 +29,13 @@ export default function ExtractSection({
   const { settings } = useSettings();
   const { status, progress, error, recipe, rawText } = state;
 
-  // When SAVED, notify parent and navigate
+  // When SAVED, clean up state after a brief delay
   useEffect(() => {
-    if (status === "SAVED" && recipe) {
-      toast.success("菜谱已保存", {
-        description: recipe.name,
-        action: { label: "查看", onClick: () => onRefineRecipe(recipe) },
-      });
-      onExtracted([recipe]);
-      onRefineRecipe(recipe);
+    if (status === "SAVED") {
       const t = setTimeout(() => reset(), 500);
       return () => clearTimeout(t);
     }
-  }, [status, recipe, onExtracted, onRefineRecipe, reset]);
+  }, [status, reset]);
 
   const handleExtract = async (url: string) => {
     const recipes = await startExtraction(url);
@@ -56,6 +50,12 @@ export default function ExtractSection({
 
   const handleSave = async (editedRecipe: Recipe) => {
     await saveEditedRecipe(editedRecipe);
+    toast.success("菜谱已保存", {
+      description: editedRecipe.name,
+      action: { label: "查看", onClick: () => onRefineRecipe(editedRecipe) },
+    });
+    onExtracted([editedRecipe]);
+    onRefineRecipe(editedRecipe);
   };
 
   const handleRegenerate = useCallback(async () => {

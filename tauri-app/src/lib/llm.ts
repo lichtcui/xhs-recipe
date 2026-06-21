@@ -4,8 +4,6 @@ const SYSTEM_PROMPT = `你是专业厨师和食谱分析师。请根据以下从
 必须严格按照 JSON 格式返回，Key 包含:
 - name: 菜名
 - total_time: 预估烹饪时间 (如 "45分钟")
-- difficulty: 难度 ("easy"|"medium"|"hard")
-- servings: 份量 (数字)
 - tags: 标签数组 (如 ["家常菜", "硬菜", "快手菜"])
 - ingredients: [{name, amount?, prep?}] 食材清单
 - seasonings: [{name, amount?}] 调料清单

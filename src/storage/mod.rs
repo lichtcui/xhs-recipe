@@ -16,8 +16,6 @@ pub struct RecipeSummary {
     pub cover_image_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_time: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub difficulty: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
 }

@@ -282,7 +282,7 @@ export default function RecipeEditor({
             placeholder="菜名"
           />
 
-          {/* Time + Difficulty + Servings row */}
+          {/* Time + Tags row */}
           <div className="grid grid-cols-3 gap-3">
             <InlineField
               label="烹饪时间"
@@ -290,29 +290,7 @@ export default function RecipeEditor({
               onChange={(v) => updateField("total_time", v || undefined)}
               placeholder="如 45分钟"
             />
-            <div className="space-y-1">
-              <Label className="text-xs text-gray-400">难度</Label>
-              <Select
-                value={edited.difficulty || "medium"}
-                onValueChange={(v) => updateField("difficulty", v)}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="easy">🟢 简单</SelectItem>
-                  <SelectItem value="medium">🟡 中等</SelectItem>
-                  <SelectItem value="hard">🔴 困难</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <InlineField
-              label="份量"
-              value={edited.servings?.toString() || ""}
-              onChange={(v) => updateField("servings", v ? parseInt(v) || undefined : undefined)}
-              placeholder="2"
-              type="number"
-            />
+            <div className="col-span-2" />
           </div>
 
           {/* Tags */}

@@ -180,11 +180,6 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
                 <p className="text-[10px] text-gray-400 truncate">
                   {truncateUrl(r.source_url, 30)}
                 </p>
-                {r.difficulty && (
-                  <span className="text-[10px] text-gray-400">
-                    {r.difficulty === "easy" ? "🟢 简单" : r.difficulty === "hard" ? "🔴 困难" : "🟡 中等"}
-                  </span>
-                )}
               </CardContent>
             </Card>
           ))}
