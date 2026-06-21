@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Star } from "lucide-react";
-import CookingTimer from "./CookingTimer";
 
 interface StickyFooterProps {
   isFavorite: boolean;
@@ -27,8 +26,6 @@ export default function StickyFooter({
       </Button>
 
       <div className="flex-1" />
-
-      <CookingTimer />
     </div>
   );
 }
