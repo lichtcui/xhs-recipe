@@ -1,40 +1,47 @@
 import { useState } from "react";
 import { SettingsProvider } from "@/hooks/useSettings";
+import { Toaster } from "sonner";
 import AppLayout from "@/components/layout/AppLayout";
-import HomePage from "@/components/home/HomePage";
-import RecipeDetail from "@/components/detail/RecipeDetail";
-import SettingsPage from "@/components/settings/SettingsPage";
+import type { Tab } from "@/components/layout/TabBar";
+import InspirePage from "@/pages/InspirePage";
+import RecipesPage from "@/pages/RecipesPage";
+import CookingPage from "@/pages/CookingPage";
+import ProfilePage from "@/pages/ProfilePage";
 import type { Recipe } from "@/types/recipe";
 
-export type Page = "home" | "detail" | "settings";
-
 function App() {
-  const [page, setPage] = useState<Page>("home");
+  const [currentTab, setCurrentTab] = useState<Tab>("inspire");
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
-  const navigateToDetail = (recipe: Recipe) => {
+  const navigateToCooking = (recipe: Recipe) => {
     setSelectedRecipe(recipe);
-    setPage("detail");
+    setCurrentTab("cooking");
   };
 
-  const navigateToHome = () => {
-    setSelectedRecipe(null);
-    setPage("home");
+  const navigateToInspire = () => {
+    setCurrentTab("inspire");
   };
 
   return (
     <SettingsProvider>
-      <AppLayout
-        currentPage={page}
-        onNavigate={(p) => {
-          if (p !== "detail") setPage(p);
-        }}
-      >
-        {page === "home" && <HomePage onViewRecipe={navigateToDetail} />}
-        {page === "detail" && (
-          <RecipeDetail recipe={selectedRecipe} onBack={navigateToHome} />
-        )}
-        {page === "settings" && <SettingsPage />}
+      <Toaster position="top-center" richColors />
+      <AppLayout currentTab={currentTab} onNavigate={setCurrentTab}>
+        {/* Keep all pages mounted with display:none to preserve state across tab switches */}
+        <div style={{ display: currentTab === "inspire" ? "block" : "none" }}>
+          <InspirePage onViewRecipe={navigateToCooking} />
+        </div>
+        <div style={{ display: currentTab === "recipes" ? "block" : "none" }}>
+          <RecipesPage onViewRecipe={navigateToCooking} />
+        </div>
+        <div style={{ display: currentTab === "cooking" ? "block" : "none" }}>
+          <CookingPage
+            recipe={selectedRecipe}
+            onBackToInspire={navigateToInspire}
+          />
+        </div>
+        <div style={{ display: currentTab === "profile" ? "block" : "none" }}>
+          <ProfilePage />
+        </div>
       </AppLayout>
     </SettingsProvider>
   );
