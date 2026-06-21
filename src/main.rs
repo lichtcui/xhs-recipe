@@ -85,17 +85,20 @@ fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_mod
     };
 
     match rt.block_on(xhs_recipe::pipeline::extract(opts)) {
-        Ok(recipes) => {
+        Ok(mut recipes) => {
             xhs_recipe::presentation::render::render_terminal_multi(&recipes);
 
             // Auto-save only substantial food recipes to local storage
             let mut saved_ids: Vec<String> = Vec::new();
-            for recipe in &recipes {
+            for recipe in &mut recipes {
                 if !recipe.is_food || !recipe.is_substantial() {
                     continue;
                 }
-                match rt.block_on(store.save(recipe)) {
-                    Ok(id) => saved_ids.push(id),
+                match rt.block_on(store.save(&*recipe)) {
+                    Ok(id) => {
+                        recipe.id = Some(id.clone());
+                        saved_ids.push(id);
+                    }
                     Err(e) => {
                         eprintln!("⚠ 本地保存失败: {}（已跳过）", e);
                     }

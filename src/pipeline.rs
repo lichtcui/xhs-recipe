@@ -141,9 +141,15 @@ pub async fn extract(opts: ExtractOptions<'_>) -> Result<Vec<Recipe>, PipelineEr
             ).await?
         };
 
-        // Set source_url on every recipe
+        // Set source_url and new metadata fields on every recipe
+        let cover_img = raw.image_urls.first().cloned();
+        let all_images = raw.image_urls.clone();
+        let raw_text = text.full_text.clone();
         for recipe in &mut recipes {
             recipe.source_url = raw.source_url.clone();
+            recipe.cover_image_url = cover_img.clone();
+            recipe.image_urls = Some(all_images.clone());
+            recipe.raw_text = Some(raw_text.clone());
         }
         Ok(recipes)
     })
