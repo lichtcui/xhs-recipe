@@ -76,6 +76,10 @@ export function useExtractionState() {
     }
   }, []);
 
+  const refineRecipe = useCallback((recipe: Recipe) => {
+    dispatch({ type: "GENERATED", recipe });
+  }, []);
+
   const reset = useCallback(() => {
     unlistenRef.current?.();
     unlistenRef.current = null;
@@ -85,6 +89,7 @@ export function useExtractionState() {
   return {
     state: state as ExtractionState,
     startExtraction,
+    refineRecipe,
     saveEditedRecipe,
     reset,
     dispatch,
