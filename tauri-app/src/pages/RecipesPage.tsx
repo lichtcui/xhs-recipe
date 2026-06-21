@@ -1,21 +1,27 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Search, X, Clock } from "lucide-react";
 import { listRecipes, getRecipe, deleteRecipe } from "@/lib/tauri";
+import { truncateUrl } from "@/lib/helpers";
+import { searchRecipes, filterByTag, collectTags } from "@/lib/searchUtils";
 import type { Recipe, RecipeSummary } from "@/types/recipe";
-import RecipeCard from "@/components/home/RecipeCard";
 
 interface RecipesPageProps {
   onViewRecipe: (recipe: Recipe) => void;
 }
 
 export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
-  const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
+  const [allRecipes, setAllRecipes] = useState<RecipeSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
 
-  const loadRecipes = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
-      const list = await listRecipes();
-      setRecipes(list);
+      setAllRecipes(await listRecipes());
     } catch (err) {
       console.error("Failed to load recipes:", err);
     } finally {
@@ -24,8 +30,16 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
   }, []);
 
   useEffect(() => {
-    loadRecipes();
-  }, [loadRecipes]);
+    load();
+  }, [load]);
+
+  const tags = useMemo(() => collectTags(allRecipes), [allRecipes]);
+
+  const filtered = useMemo(() => {
+    let result = searchRecipes(allRecipes, query);
+    result = filterByTag(result, activeTag);
+    return result;
+  }, [allRecipes, query, activeTag]);
 
   const handleView = async (summary: RecipeSummary) => {
     try {
@@ -37,11 +51,12 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
   };
 
   const handleDelete = async (summary: RecipeSummary) => {
+    if (!window.confirm(`确定删除「${summary.name}」？`)) return;
     try {
       await deleteRecipe(summary.id);
-      setRecipes((prev) => prev.filter((r) => r.id !== summary.id));
+      setAllRecipes((prev) => prev.filter((r) => r.id !== summary.id));
     } catch (err) {
-      console.error("Failed to delete recipe:", err);
+      console.error("Failed to delete:", err);
     }
   };
 
@@ -49,7 +64,11 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
     return (
       <div>
         <h2 className="text-[22px] font-bold text-xhs mb-4">我的菜谱</h2>
-        <div className="text-sm text-gray-400">加载中...</div>
+        <div className="animate-pulse space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 bg-gray-100 rounded-xl" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -57,21 +76,117 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
   return (
     <div>
       <h2 className="text-[22px] font-bold text-xhs mb-4">我的菜谱</h2>
-      {recipes.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <p className="text-4xl mb-3">📖</p>
-          <p className="text-sm">还没有保存的菜谱</p>
-          <p className="text-xs mt-1">去「灵感厨房」提取第一条菜谱吧</p>
+
+      {/* Search bar */}
+      <div className="relative mb-3">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜索菜谱、食材..."
+          className="pl-9 pr-9 h-10 text-sm rounded-xl"
+        />
+        {query && (
+          <button
+            onClick={() => setQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      {/* Tag filter chips */}
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <Badge
+            variant={activeTag === null ? "default" : "secondary"}
+            className="cursor-pointer"
+            onClick={() => setActiveTag(null)}
+          >
+            全部
+          </Badge>
+          {tags.map((tag) => (
+            <Badge
+              key={tag}
+              variant={activeTag === tag ? "default" : "secondary"}
+              className="cursor-pointer"
+              onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+            >
+              {tag}
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      {/* Results */}
+      {allRecipes.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-5xl mb-4">📖</p>
+          <p className="text-sm font-medium">还没有保存的菜谱</p>
+          <p className="text-xs mt-2">去「灵感厨房」提取第一条菜谱吧</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-5xl mb-4">🔍</p>
+          <p className="text-sm font-medium">没有找到相关菜谱</p>
+          <p className="text-xs mt-2">
+            试试搜索「{allRecipes[0]?.name?.slice(0, 2) || "排骨"}」
+          </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {recipes.map((r) => (
-            <RecipeCard
+        <div className="grid grid-cols-2 gap-3">
+          {filtered.map((r) => (
+            <Card
               key={r.id}
-              recipe={r}
-              onView={() => handleView(r)}
-              onDelete={() => handleDelete(r)}
-            />
+              className="cursor-pointer hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 overflow-hidden"
+              onClick={() => handleView(r)}
+            >
+              {/* Cover image */}
+              <div className="h-28 bg-gradient-to-br from-xhs/10 to-orange-50 relative overflow-hidden">
+                {r.cover_image_url && (
+                  <img
+                    src={r.cover_image_url}
+                    alt={r.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                )}
+                {r.total_time && (
+                  <span className="absolute bottom-1.5 right-1.5 bg-black/50 backdrop-blur-sm text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                    <Clock size={10} />
+                    {r.total_time}
+                  </span>
+                )}
+              </div>
+              <CardContent className="p-2.5 space-y-1">
+                <div className="flex items-start justify-between gap-1">
+                  <p className="font-semibold text-sm leading-tight line-clamp-2">
+                    {r.name}
+                  </p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(r);
+                    }}
+                    className="text-gray-300 hover:text-red-500 shrink-0 transition-colors"
+                    title="删除"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-400 truncate">
+                  {truncateUrl(r.source_url, 30)}
+                </p>
+                {r.difficulty && (
+                  <span className="text-[10px] text-gray-400">
+                    {r.difficulty === "easy" ? "🟢 简单" : r.difficulty === "hard" ? "🔴 困难" : "🟡 中等"}
+                  </span>
+                )}
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
