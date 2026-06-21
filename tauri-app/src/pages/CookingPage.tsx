@@ -7,7 +7,6 @@ import IngredientList from "@/components/detail/IngredientList";
 import StepTimeline from "@/components/detail/StepTimeline";
 import FrameGallery from "@/components/detail/FrameGallery";
 import TipList from "@/components/detail/TipList";
-import StickyFooter from "@/components/detail/StickyFooter";
 import { getFavorites, favKey } from "@/lib/favorites";
 import type { Recipe } from "@/types/recipe";
 
@@ -61,6 +60,8 @@ export default function CookingPage({ recipe, onBackToInspire }: CookingPageProp
         <HeroSection
           coverImageUrl={recipe.cover_image_url}
           name={recipe.name}
+          isFavorite={isFavorite}
+          onToggleFavorite={toggleFavorite}
         />
         <button
           onClick={onBackToInspire}
@@ -112,11 +113,8 @@ export default function CookingPage({ recipe, onBackToInspire }: CookingPageProp
       {/* Tips */}
       <TipList tips={recipe.tips} />
 
-      {/* Sticky footer */}
-      <StickyFooter
-        isFavorite={isFavorite}
-        onToggleFavorite={toggleFavorite}
-      />
+      {/* Bottom padding */}
+      <div className="h-8" />
     </div>
   );
 }
