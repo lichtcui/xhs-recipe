@@ -5,6 +5,7 @@ import type {
   RecipeSummary,
   PrerequisiteStatus,
   ProgressEvent,
+  ExtractTextResult,
 } from "@/types/recipe";
 import type { ExtractSettingsPayload } from "@/types/settings";
 
@@ -49,4 +50,19 @@ export function onExtractProgress(
   return listen<ProgressEvent>("extract:progress", (event) => {
     callback(event.payload);
   });
+}
+
+export async function extractText(
+  url: string,
+  settings: ExtractSettingsPayload
+): Promise<ExtractTextResult> {
+  return invoke<ExtractTextResult>("extract_text", { url, settings });
+}
+
+export async function analyzeRecipe(
+  text: string,
+  model: string,
+  apiKey?: string
+): Promise<Recipe[]> {
+  return invoke<Recipe[]>("analyze_recipe", { text, model, apiKey: apiKey || null });
 }

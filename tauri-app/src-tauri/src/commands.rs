@@ -178,3 +178,73 @@ pub async fn delete_recipe(id: String) -> Result<(), String> {
 pub async fn save_recipe(recipe: Recipe) -> Result<String, String> {
     LocalStorage::default().save(&recipe).await.map_err(|e| e.to_string())
 }
+
+/// Extract text only (no LLM analysis). Returns raw text + cover image for the Bridge flow.
+#[derive(Serialize)]
+pub struct ExtractTextResult {
+    pub raw_text: String,
+    pub cover_image_url: Option<String>,
+    pub image_urls: Vec<String>,
+    pub title: String,
+    pub source_url: String,
+}
+
+#[tauri::command]
+pub async fn extract_text(
+    app: AppHandle,
+    url: String,
+    settings: ExtractSettings,
+) -> Result<ExtractTextResult, String> {
+    let emit = |stage: &str, detail: &str| {
+        let _ = app.emit("extract:progress", ProgressEvent {
+            stage: stage.to_string(),
+            detail: detail.to_string(),
+        });
+    };
+
+    emit("fetching", &url);
+    let raw = sources::fetch(&url).await.map_err(|e| e.to_string())?;
+
+    let on_progress: std::sync::Arc<dyn Fn(&str) + Send + Sync> = std::sync::Arc::new({
+        let app = app.clone();
+        move |stage: &str| {
+            let mapped = match stage {
+                "downloading" => "downloading",
+                "ocr" => "ocr",
+                "asr" => "asr",
+                _ => "downloading",
+            };
+            let _ = app.emit("extract:progress", ProgressEvent {
+                stage: mapped.to_string(),
+                detail: String::new(),
+            });
+        }
+    });
+
+    let text = textifier::process(&raw, &settings.asr_model, settings.ocr_images, Some(on_progress))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    emit("done", "");
+    Ok(ExtractTextResult {
+        raw_text: text.full_text,
+        cover_image_url: raw.image_urls.first().cloned(),
+        image_urls: raw.image_urls,
+        title: text.title,
+        source_url: text.source_url,
+    })
+}
+
+/// Analyze raw text with LLM (no fetch/textify). Returns structured recipes.
+#[tauri::command]
+pub async fn analyze_recipe(
+    text: String,
+    model: String,
+    api_key: Option<String>,
+) -> Result<Vec<Recipe>, String> {
+    let client = analyzer::RealHttpClient::new();
+    let recipes = analyzer::extract_recipe(&client, &text, &[], &model, api_key.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(recipes)
+}
