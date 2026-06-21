@@ -23,7 +23,7 @@ export function useExtractionState() {
   }, []);
 
   const startExtraction = useCallback(
-    async (url: string) => {
+    async (url: string): Promise<Recipe[]> => {
       dispatch({ type: "START_PARSING", url });
 
       // Set up progress listener
@@ -46,10 +46,12 @@ export function useExtractionState() {
         } else {
           dispatch({ type: "ERROR", message: "未提取到任何菜谱信息" });
         }
+        return recipes;
       } catch (err) {
         unlistenRef.current?.();
         unlistenRef.current = null;
         dispatch({ type: "ERROR", message: String(err) });
+        return [];
       }
     },
     [getExtractPayload]

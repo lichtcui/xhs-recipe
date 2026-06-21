@@ -34,7 +34,7 @@ export default function HomePage({ onViewRecipe }: HomePageProps) {
     <div>
       <h2 className="text-[22px] font-bold text-xhs mb-4">小红书菜谱提取</h2>
 
-      <ExtractSection onExtracted={handleExtracted} />
+      <ExtractSection onExtracted={handleExtracted} onRefineRecipe={onViewRecipe} />
 
       {warning && (
         <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
