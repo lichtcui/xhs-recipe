@@ -30,15 +30,16 @@ fn detect_content_type(raw: &RawContent) -> ContentType {
     ContentType::Image
 }
 
-/// reqwest direct HTTP client
+/// reqwest direct HTTP client with saved Xiaohongshu cookies.
 fn xhs_http_client() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(|| {
+        let jar = super::auth::build_cookie_jar();
         reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
             .redirect(reqwest::redirect::Policy::limited(10))
             .timeout(Duration::from_secs(30))
-            .cookie_store(true)
+            .cookie_provider(jar)
             .build()
             .expect("reqwest client build")
     })

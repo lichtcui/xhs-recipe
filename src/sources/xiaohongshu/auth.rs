@@ -1,6 +1,9 @@
 /// Cookie management for Xiaohongshu — save/load.
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use reqwest::cookie::Jar;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 /// A simple serializable cookie for file-based storage.
@@ -42,6 +45,28 @@ pub fn load_cookies() -> Vec<Cookie> {
 /// Check if any saved cookies exist.
 pub fn has_cookies() -> bool {
     cookie_path().exists()
+}
+
+/// Build a reqwest cookie jar pre-populated with saved Xiaohongshu cookies.
+/// This jar can be passed to `reqwest::ClientBuilder::cookie_provider()` to
+/// automatically include saved cookies (e.g. `a1`, `web_session`) in all requests.
+pub fn build_cookie_jar() -> Arc<Jar> {
+    let jar = Arc::new(Jar::default());
+    let xhs_url: Url = "https://www.xiaohongshu.com".parse().unwrap();
+    for cookie in load_cookies() {
+        // Build a minimal Set-Cookie header value and add to jar
+        let mut value = format!("{}={}", cookie.name, cookie.value);
+        if !cookie.domain.is_empty() {
+            value.push_str(&format!("; Domain={}", cookie.domain));
+        }
+        if !cookie.path.is_empty() {
+            value.push_str(&format!("; Path={}", cookie.path));
+        } else {
+            value.push_str("; Path=/");
+        }
+        jar.add_cookie_str(&value, &xhs_url);
+    }
+    jar
 }
 
 /// Save cookies to the cookie file.

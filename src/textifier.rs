@@ -116,10 +116,11 @@ pub enum TextifierError {
 fn video_download_client() -> reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(|| {
+        let jar = crate::sources::xiaohongshu::auth::build_cookie_jar();
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(300))
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-            .cookie_store(true)
+            .cookie_provider(jar)
             .build()
             .expect("reqwest client build")
     }).clone()
@@ -619,10 +620,11 @@ fn ocr_video_frames(video_path: &Path) -> Result<Option<String>, TextifierError>
 fn image_download_client() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(|| {
+        let jar = crate::sources::xiaohongshu::auth::build_cookie_jar();
         reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
             .timeout(std::time::Duration::from_secs(30))
-            .cookie_store(true)
+            .cookie_provider(jar)
             .build()
             .expect("reqwest client build")
     })
