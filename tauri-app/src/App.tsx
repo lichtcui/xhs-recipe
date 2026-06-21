@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SettingsProvider } from "@/hooks/useSettings";
 import { Toaster } from "sonner";
 import AppLayout from "@/components/layout/AppLayout";
@@ -22,11 +22,27 @@ function App() {
     setCurrentTab("inspire");
   };
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "n") {
+        e.preventDefault();
+        setCurrentTab("inspire");
+      } else if (e.key === "Escape") {
+        if (currentTab === "cooking") {
+          setCurrentTab("recipes");
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentTab]);
+
   return (
     <SettingsProvider>
       <Toaster position="top-center" richColors />
       <AppLayout currentTab={currentTab} onNavigate={setCurrentTab}>
-        {/* Keep all pages mounted with display:none to preserve state across tab switches */}
         <div style={{ display: currentTab === "inspire" ? "block" : "none" }}>
           <InspirePage onViewRecipe={navigateToCooking} />
         </div>

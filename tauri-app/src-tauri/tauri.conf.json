@@ -16,6 +16,8 @@
         "title": "小红书菜谱提取",
         "width": 900,
         "height": 700,
+        "minWidth": 800,
+        "minHeight": 600,
         "resizable": true,
         "center": true
       }
