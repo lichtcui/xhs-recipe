@@ -149,6 +149,10 @@ impl Storage for LocalStorage {
                     source_url: stored.recipe.source_url,
                     saved_at: stored.saved_at,
                     is_food: stored.recipe.is_food,
+                    cover_image_url: stored.recipe.cover_image_url.clone(),
+                    total_time: stored.recipe.total_time.clone(),
+                    difficulty: stored.recipe.difficulty.clone(),
+                    tags: stored.recipe.tags.clone().unwrap_or_default(),
                 })
             })
             .collect();
@@ -166,7 +170,9 @@ impl Storage for LocalStorage {
                 _ => e.into(),
             })?;
         let stored: StoredRecipe = serde_json::from_str(&data)?;
-        Ok(stored.recipe)
+        let mut recipe = stored.recipe;
+        recipe.id = Some(stored.id);
+        Ok(recipe)
     }
 
     async fn get_by_source_url(&self, source_url: &str) -> Result<Vec<Recipe>, StorageError> {
@@ -223,6 +229,7 @@ mod tests {
             source_url: "https://example.com/test".into(),
             is_food: true,
             reason: None,
+            ..Default::default()
         }
     }
 

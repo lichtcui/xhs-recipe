@@ -184,6 +184,7 @@ mod tests {
             source_url: "".into(),
             is_food: false,
             reason: Some("旅游攻略".into()),
+            ..Default::default()
         };
         let tmp = std::env::temp_dir().join("test_non_food.json");
         save_to_file(&[recipe], &tmp).unwrap();

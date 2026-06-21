@@ -13,6 +13,7 @@ fn main() {
             commands::list_recipes,
             commands::get_recipe,
             commands::delete_recipe,
+            commands::save_recipe,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

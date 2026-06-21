@@ -109,18 +109,26 @@ pub async fn extract(
             .map_err(|e| e.to_string())
     }?;
 
-    // Set source_url on all recipes
+    // Set source_url and new metadata fields on all recipes
+    let cover_img = raw.image_urls.first().cloned();
+    let all_images = raw.image_urls.clone();
+    let raw_text = text.full_text.clone();
     for recipe in &mut recipes {
         recipe.source_url = raw.source_url.clone();
+        recipe.cover_image_url = cover_img.clone();
+        recipe.image_urls = Some(all_images.clone());
+        recipe.raw_text = Some(raw_text.clone());
     }
 
     // Auto-save only substantial food recipes
     let store = LocalStorage::default();
     let total = recipes.len();
     let food_count = recipes.iter().filter(|r| r.is_food && r.is_substantial()).count();
-    for recipe in &recipes {
+    for recipe in &mut recipes {
         if recipe.is_food && recipe.is_substantial() {
-            let _ = store.save(recipe).await;
+            if let Ok(id) = store.save(recipe).await {
+                recipe.id = Some(id);
+            }
         }
     }
 
@@ -164,4 +172,9 @@ pub async fn get_recipe(id: String) -> Result<Recipe, String> {
 #[tauri::command]
 pub async fn delete_recipe(id: String) -> Result<(), String> {
     LocalStorage::default().delete(&id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_recipe(recipe: Recipe) -> Result<String, String> {
+    LocalStorage::default().save(&recipe).await.map_err(|e| e.to_string())
 }

@@ -188,6 +188,7 @@ mod tests {
             source_url: "https://example.com".into(),
             is_food: true,
             reason: None,
+            ..Default::default()
         }
     }
 
@@ -204,6 +205,7 @@ mod tests {
             source_url: "".into(),
             is_food: false,
             reason: Some("这是一篇旅游攻略".into()),
+            ..Default::default()
         };
         render_terminal(&recipe); // visual check
     }

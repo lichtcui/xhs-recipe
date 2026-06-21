@@ -40,6 +40,7 @@ fn test_recipe_serde_roundtrip() {
         source_url: "https://example.com/recipe".into(),
         is_food: true,
         reason: None,
+        ..Default::default()
     };
 
     let json = serde_json::to_string_pretty(&recipe).unwrap();
@@ -68,6 +69,7 @@ fn test_recipe_non_food_roundtrip() {
         source_url: String::new(),
         is_food: false,
         reason: Some("旅游攻略，非美食内容".into()),
+        ..Default::default()
     };
 
     let json = serde_json::to_string_pretty(&recipe).unwrap();

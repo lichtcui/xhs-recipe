@@ -27,6 +27,10 @@ export async function deleteRecipe(id: string): Promise<void> {
   return invoke<void>("delete_recipe", { id });
 }
 
+export async function saveRecipe(recipe: Recipe): Promise<string> {
+  return invoke<string>("save_recipe", { recipe });
+}
+
 export async function checkPrerequisites(): Promise<PrerequisiteStatus> {
   return invoke<PrerequisiteStatus>("check_prerequisites");
 }

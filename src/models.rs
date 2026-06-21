@@ -71,6 +71,8 @@ pub struct Step {
 /// The final structured recipe output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Recipe {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_time: Option<String>,
@@ -89,6 +91,18 @@ pub struct Recipe {
     pub is_food: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover_image_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_urls: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub servings: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_text: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -98,6 +112,7 @@ fn default_true() -> bool {
 impl Default for Recipe {
     fn default() -> Self {
         Self {
+            id: None,
             name: String::new(),
             total_time: None,
             ingredients: vec![],
@@ -108,6 +123,12 @@ impl Default for Recipe {
             source_url: String::new(),
             is_food: true,
             reason: None,
+            cover_image_url: None,
+            image_urls: None,
+            tags: None,
+            difficulty: None,
+            servings: None,
+            raw_text: None,
         }
     }
 }
@@ -184,6 +205,7 @@ mod tests {
             source_url: "https://xhslink.com/test".into(),
             is_food: true,
             reason: None,
+            ..Default::default()
         };
 
         let json = serde_json::to_string_pretty(&recipe).unwrap();
@@ -207,6 +229,7 @@ mod tests {
             source_url: "".into(),
             is_food: true,
             reason: None,
+            ..Default::default()
         };
         // is_food should serialize as true (default), not null
         let json = serde_json::to_string(&recipe).unwrap();
