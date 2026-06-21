@@ -8,6 +8,7 @@ import StepTimeline from "@/components/detail/StepTimeline";
 import FrameGallery from "@/components/detail/FrameGallery";
 import TipList from "@/components/detail/TipList";
 import StickyFooter from "@/components/detail/StickyFooter";
+import { getFavorites, favKey } from "@/lib/favorites";
 import type { Recipe } from "@/types/recipe";
 
 interface CookingPageProps {
@@ -15,26 +16,14 @@ interface CookingPageProps {
   onBackToInspire: () => void;
 }
 
-function getFavorites(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem("xhs-favorites") || "[]"));
-  } catch {
-    return new Set();
-  }
-}
-
-function favKey(recipe: Recipe): string {
-  return `${recipe.source_url}::${recipe.name}`;
-}
-
 export default function CookingPage({ recipe, onBackToInspire }: CookingPageProps) {
   const [favorites, setFavorites] = useState<Set<string>>(getFavorites);
 
-  const isFavorite = recipe ? favorites.has(favKey(recipe)) : false;
+  const isFavorite = recipe ? favorites.has(favKey(recipe.source_url, recipe.name)) : false;
 
   const toggleFavorite = useCallback(() => {
     if (!recipe) return;
-    const key = favKey(recipe);
+    const key = favKey(recipe.source_url, recipe.name);
     setFavorites((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {

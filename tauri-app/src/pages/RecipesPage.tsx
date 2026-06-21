@@ -6,6 +6,7 @@ import { Search, X, Clock } from "lucide-react";
 import { listRecipes, getRecipe, deleteRecipe } from "@/lib/tauri";
 import { truncateUrl } from "@/lib/helpers";
 import { searchRecipes, filterByTag, collectTags } from "@/lib/searchUtils";
+import { getFavorites, favKey } from "@/lib/favorites";
 import type { Recipe, RecipeSummary } from "@/types/recipe";
 
 interface RecipesPageProps {
@@ -17,6 +18,7 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -35,11 +37,16 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
 
   const tags = useMemo(() => collectTags(allRecipes), [allRecipes]);
 
+  const [favorites, setFavorites] = useState<Set<string>>(getFavorites);
+
   const filtered = useMemo(() => {
     let result = searchRecipes(allRecipes, query);
     result = filterByTag(result, activeTag);
+    if (favoritesOnly) {
+      result = result.filter((r) => favorites.has(favKey(r.source_url, r.name)));
+    }
     return result;
-  }, [allRecipes, query, activeTag]);
+  }, [allRecipes, query, activeTag, favoritesOnly, favorites]);
 
   const handleView = async (summary: RecipeSummary) => {
     try {
@@ -97,27 +104,32 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
       </div>
 
       {/* Tag filter chips */}
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-4">
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        <Badge
+          variant={!favoritesOnly && activeTag === null ? "default" : "secondary"}
+          className="cursor-pointer"
+          onClick={() => { setFavoritesOnly(false); setActiveTag(null); }}
+        >
+          全部
+        </Badge>
+        <Badge
+          variant={favoritesOnly ? "default" : "secondary"}
+          className="cursor-pointer"
+          onClick={() => setFavoritesOnly(!favoritesOnly)}
+        >
+          ⭐ 收藏
+        </Badge>
+        {tags.map((tag) => (
           <Badge
-            variant={activeTag === null ? "default" : "secondary"}
+            key={tag}
+            variant={!favoritesOnly && activeTag === tag ? "default" : "secondary"}
             className="cursor-pointer"
-            onClick={() => setActiveTag(null)}
+            onClick={() => { setFavoritesOnly(false); setActiveTag(activeTag === tag ? null : tag); }}
           >
-            全部
+            {tag}
           </Badge>
-          {tags.map((tag) => (
-            <Badge
-              key={tag}
-              variant={activeTag === tag ? "default" : "secondary"}
-              className="cursor-pointer"
-              onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-            >
-              {tag}
-            </Badge>
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
 
       {/* Results */}
       {allRecipes.length === 0 ? (
@@ -128,10 +140,14 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-5xl mb-4">🔍</p>
-          <p className="text-sm font-medium">没有找到相关菜谱</p>
+          <p className="text-5xl mb-4">{favoritesOnly ? "⭐" : "🔍"}</p>
+          <p className="text-sm font-medium">
+            {favoritesOnly ? "还没有收藏的菜谱" : "没有找到相关菜谱"}
+          </p>
           <p className="text-xs mt-2">
-            试试搜索「{allRecipes[0]?.name?.slice(0, 2) || "排骨"}」
+            {favoritesOnly
+              ? "在菜谱详情页点击⭐即可收藏"
+              : `试试搜索「${allRecipes[0]?.name?.slice(0, 2) || "排骨"}」`}
           </p>
         </div>
       ) : (
