@@ -1,17 +1,18 @@
 import { useState, useCallback } from "react";
 import ExtractSection from "@/components/home/ExtractSection";
-import RecipeList from "@/components/home/RecipeList";
 import CookingPage from "@/pages/CookingPage";
+import { Card, CardContent } from "@/components/ui/card";
+import { truncateUrl } from "@/lib/helpers";
 import type { Recipe } from "@/types/recipe";
 
 export default function InspirePage() {
-  const [refreshKey, setRefreshKey] = useState(0);
   const [warning, setWarning] = useState<string | null>(null);
   const [viewedRecipe, setViewedRecipe] = useState<Recipe | null>(null);
+  const [extractedRecipes, setExtractedRecipes] = useState<Recipe[]>([]);
 
   const handleExtracted = useCallback((recipes: Recipe[]) => {
-    setRefreshKey((k) => k + 1);
     setWarning(null);
+    setExtractedRecipes(recipes);
 
     const nonFood = recipes.filter((r) => !r.is_food);
     if (nonFood.length > 0 && recipes.every((r) => !r.is_food)) {
@@ -50,12 +51,31 @@ export default function InspirePage() {
         </div>
       )}
 
-      <div className="mt-8">
-        <h3 className="text-[17px] font-semibold text-gray-500 mb-3">
-          已保存的菜谱
-        </h3>
-        <RecipeList refreshTrigger={refreshKey} onViewRecipe={handleRefine} />
-      </div>
+      {extractedRecipes.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-[17px] font-semibold text-gray-500 mb-3">
+            提取结果
+          </h3>
+          <div className="flex flex-col gap-2">
+            {extractedRecipes.map((r, i) => (
+              <Card
+                key={r.id || i}
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => handleRefine(r)}
+              >
+                <CardContent className="flex items-center justify-between p-3">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="font-semibold text-[15px]">{r.name}</span>
+                    <span className="text-xs text-muted-foreground truncate">
+                      {truncateUrl(r.source_url)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
