@@ -5,6 +5,7 @@
 /// 2. OG meta tags via HTML parsing (fallback)
 use crate::models::{ContentType, RawContent};
 use super::super::SourceError;
+use super::url::extract_note_id;
 use std::time::Duration;
 
 pub async fn scrape(url: &str) -> Result<RawContent, SourceError> {
@@ -63,6 +64,14 @@ async fn scrape_http(url: &str) -> Result<RawContent, SourceError> {
     if !resp.status().is_success() {
         return Err(SourceError::FetchFailed(format!("HTTP {}", resp.status())));
     }
+    // Use final URL after any redirects (e.g. xhslink.com → xiaohongshu.com/explore/...)
+    // Normalize to clean canonical URL by extracting the note ID.
+    let canonical_url = resp.url().as_str().to_string();
+    let source_url = if let Some(note_id) = extract_note_id(&canonical_url) {
+        format!("https://www.xiaohongshu.com/explore/{}", note_id)
+    } else {
+        canonical_url
+    };
     let body = resp
         .text()
         .await
@@ -78,7 +87,7 @@ async fn scrape_http(url: &str) -> Result<RawContent, SourceError> {
                     has_video: parsed.has_video,
                     video_url: parsed.video_url,
                     source: "xiaohongshu".into(),
-                    source_url: url.to_string(),
+                    source_url: source_url,
                     content_type: Default::default(),
                 });
             }
@@ -92,7 +101,7 @@ async fn scrape_http(url: &str) -> Result<RawContent, SourceError> {
             has_video: body.contains("<video") || body.contains("\"type\":\"video\""),
             video_url: None,
             source: "xiaohongshu".into(),
-            source_url: url.to_string(),
+            source_url: source_url,
             content_type: Default::default(),
         });
     }

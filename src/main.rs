@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
+use xhs_recipe::sources::xiaohongshu::url::resolve_short_url;
 use xhs_recipe::storage::{local::LocalStorage, Storage};
 
 #[derive(Parser)]
@@ -58,6 +59,27 @@ fn main() {
 
 fn run_extract(url: &str, output: Option<&std::path::Path>, model: &str, asr_model: &str, images: bool, timeout: u64) {
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime init");
+
+    // Resolve short URLs (xhslink.com) and normalize to clean canonical form for reliable cache lookup
+    let canonical_url = match rt.block_on(resolve_short_url(url)) {
+        Ok(resolved) => {
+            if resolved != url {
+                xhs_recipe::vprintln!("  ✓ 短链解析: {} → {}", url, resolved);
+            }
+            // Normalize to https://www.xiaohongshu.com/explore/{note_id}
+            // so that xsec_token and other query params don't break cache matching.
+            if let Some(note_id) = xhs_recipe::sources::xiaohongshu::url::extract_note_id(&resolved) {
+                format!("https://www.xiaohongshu.com/explore/{}", note_id)
+            } else {
+                resolved
+            }
+        }
+        Err(e) => {
+            xhs_recipe::vprintln!("  ⚠ 短链解析失败: {}（使用原链接）", e);
+            url.to_string()
+        }
+    };
+    let url = &canonical_url;
 
     // Check cache first
     let store = LocalStorage::default();
@@ -305,7 +327,7 @@ mod tests {
                 assert_eq!(url, "http://xhslink.com/test");
                 assert_eq!(model, "deepseek-chat");
                 assert!(images);
-                assert_eq!(asr_model, "qwen3-asr-0.6b");
+                assert_eq!(asr_model, "qwen3-asr-1.7b");
                 assert!(output.is_none());
             }
             _ => panic!("expected Extract"),
