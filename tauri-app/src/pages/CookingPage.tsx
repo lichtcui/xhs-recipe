@@ -63,7 +63,7 @@ export default function CookingPage({ recipe, onBack }: CookingPageProps) {
       setCurrentRecipe(saved);
       setEditMode(false);
       window.scrollTo(0, 0);
-      toast.success("菜谱已更新");
+      toast.success(`已保存「${edited.name}」`, { duration: 2000 });
     } catch (err) {
       toast.error("保存失败", { description: String(err) });
     }
