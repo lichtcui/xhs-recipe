@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -227,43 +228,54 @@ export default function RecipesPage() {
       )}
 
       {/* Delete confirmation modal */}
-      {deleteConfirm && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
-          onClick={() => setDeleteConfirm(null)}
-        >
-          <div
-            className="bg-white rounded-2xl p-6 mx-4 max-w-sm w-full shadow-xl"
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div
+            key="delete-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+            onClick={() => setDeleteConfirm(null)}
           >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                <AlertTriangle size={20} className="text-red-500" />
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="bg-white rounded-2xl p-5 max-w-sm w-full shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-xhs/10 flex items-center justify-center shrink-0">
+                  <AlertTriangle size={20} className="text-xhs" />
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <h3 className="font-semibold text-[15px] text-gray-900">确认删除</h3>
+                  <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+                    确定删除「{deleteConfirm.name}」？此操作不可撤回。
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-base">确认删除</h3>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  确定删除「{deleteConfirm.name}」？此操作不可撤回。
-                </p>
+              <div className="flex gap-2 mt-5 justify-end">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-xhs hover:bg-xhs-hover text-white transition-colors"
+                >
+                  删除
+                </button>
               </div>
-            </div>
-            <div className="flex gap-2 mt-5 justify-end">
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 text-sm font-medium rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="px-4 py-2 text-sm font-medium rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors"
-              >
-                删除
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
