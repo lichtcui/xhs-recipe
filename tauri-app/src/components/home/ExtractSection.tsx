@@ -1,7 +1,6 @@
-import { useEffect, useCallback } from "react";
+import { useEffect } from "react";
 import { useExtractionState } from "@/hooks/useExtractionState";
 import { useLlmStream } from "@/hooks/useLlmStream";
-import { useSettings } from "@/hooks/useSettings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
@@ -23,11 +22,10 @@ export default function ExtractSection({
   onExtracted,
   onRefineRecipe,
 }: ExtractSectionProps) {
-  const { state, startExtraction, refineRecipe, saveEditedRecipe, reset, dispatch } =
+  const { state, startExtraction, refineRecipe, saveEditedRecipe, reset } =
     useExtractionState();
-  const { streamText, tokens } = useLlmStream();
-  const { settings } = useSettings();
-  const { status, progress, error, recipe, rawText } = state;
+  const { tokens } = useLlmStream();
+  const { status, progress, error, recipe } = state;
 
   // When SAVED, clean up state after a brief delay
   useEffect(() => {
@@ -57,39 +55,6 @@ export default function ExtractSection({
     onExtracted([editedRecipe]);
     onRefineRecipe(editedRecipe);
   };
-
-  const handleRegenerate = useCallback(async () => {
-    if (!rawText) {
-      toast.error("无法重新生成，请重新提取链接");
-      return;
-    }
-
-    // Path B: streaming if API key is available
-    if (settings.apiKey) {
-      dispatch({ type: "START_GENERATING" });
-      try {
-        const recipes = await streamText(rawText);
-        if (recipes.length > 0) {
-          dispatch({ type: "GENERATED", recipe: recipes[0] });
-        } else {
-          dispatch({ type: "ERROR", message: "未生成任何菜谱" });
-        }
-      } catch (err) {
-        dispatch({ type: "ERROR", message: String(err) });
-      }
-      return;
-    }
-
-    // Path A fallback: re-extract via Rust
-    if (state.url) {
-      const recipes = await startExtraction(state.url);
-      if (recipes.length > 0) {
-        dispatch({ type: "GENERATED", recipe: recipes[0] });
-      }
-    } else {
-      toast.error("无法重新生成，请重新提取链接");
-    }
-  }, [rawText, settings.apiKey, state.url, streamText, startExtraction, dispatch]);
 
   const title =
     status === "GENERATED" || status === "SAVED"
@@ -141,7 +106,6 @@ export default function ExtractSection({
           <RecipeEditor
             recipe={recipe}
             onSave={handleSave}
-            onRegenerate={handleRegenerate}
             onCancel={reset}
           />
         )}

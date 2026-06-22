@@ -3,22 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Plus, X, Save, RotateCcw, ChevronLeft } from "lucide-react";
+import { Plus, X, Save, ChevronLeft } from "lucide-react";
 import type { Recipe, Ingredient, Step } from "@/types/recipe";
 
 interface RecipeEditorProps {
   recipe: Recipe;
   onSave: (recipe: Recipe) => Promise<void>;
-  onRegenerate: () => void;
   onCancel: () => void;
 }
 
@@ -68,7 +60,6 @@ function InlineField({
 export default function RecipeEditor({
   recipe,
   onSave,
-  onRegenerate,
   onCancel,
 }: RecipeEditorProps) {
   const [edited, setEdited] = useState<Recipe>({ ...recipe,
@@ -526,17 +517,6 @@ export default function RecipeEditor({
       {/* ── Actions ── */}
       <Separator />
       <div className="flex gap-3 pb-4">
-        <Button
-          variant="outline"
-          onClick={() => {
-            if (isDirty && !window.confirm("菜谱未保存，确定放弃？")) return;
-            onRegenerate();
-          }}
-          className="flex-1"
-        >
-          <RotateCcw size={16} className="mr-1.5" />
-          重新生成
-        </Button>
         <Button
           onClick={handleSave}
           disabled={saving || !edited.name.trim()}

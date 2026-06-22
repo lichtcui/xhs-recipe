@@ -91,7 +91,6 @@ export default function CookingPage({ recipe, onBack }: CookingPageProps) {
         <RecipeEditor
           recipe={currentRecipe}
           onSave={handleSave}
-          onRegenerate={() => toast.error("暂不支持重新生成")}
           onCancel={() => setEditMode(false)}
         />
       </div>
