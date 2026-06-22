@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Search, X, Clock, AlertTriangle, BookOpen } from "lucide-react";
 import { toast } from "sonner";
-import { listRecipes, getRecipe, deleteRecipe } from "@/lib/tauri";
+import { listRecipes, getRecipe, deleteRecipe, saveRecipe } from "@/lib/tauri";
 import { truncateUrl } from "@/lib/helpers";
 import { searchRecipes, filterByTag, collectTags } from "@/lib/searchUtils";
 import { getFavorites, favKey } from "@/lib/favorites";
@@ -65,9 +65,25 @@ export default function RecipesPage() {
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
     try {
+      // Fetch full recipe first in case user wants to undo
+      const recipe = await getRecipe(deleteConfirm.id);
       await deleteRecipe(deleteConfirm.id);
       setAllRecipes((prev) => prev.filter((r) => r.id !== deleteConfirm.id));
-      toast.success(`已删除「${deleteConfirm.name}」`);
+      toast.success(`已删除「${deleteConfirm.name}」`, {
+        action: {
+          label: "撤销",
+          onClick: async () => {
+            try {
+              await saveRecipe(recipe);
+              load();
+              toast.success(`已恢复「${deleteConfirm.name}」`);
+            } catch {
+              toast.error("撤销失败，请重新提取");
+            }
+          },
+        },
+        duration: 4000,
+      });
     } catch (err) {
       console.error("Failed to delete:", err);
       toast.error(`删除失败`);
