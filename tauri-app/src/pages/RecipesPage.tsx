@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, X, Clock, AlertTriangle } from "lucide-react";
+import { Search, X, Clock, AlertTriangle, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { listRecipes, getRecipe, deleteRecipe } from "@/lib/tauri";
 import { truncateUrl } from "@/lib/helpers";
@@ -88,7 +88,11 @@ export default function RecipesPage() {
   if (loading) {
     return (
       <div>
-        <h2 className="text-[22px] font-bold text-xhs mb-4">我的菜谱</h2>
+        <div className="flex items-center gap-2 mb-1">
+          <BookOpen size={22} className="text-xhs" />
+          <h2 className="text-[22px] font-bold text-xhs">我的菜谱</h2>
+        </div>
+        <p className="text-sm text-gray-400 mb-3">查看和管理已保存的菜谱</p>
         <div className="animate-pulse space-y-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-20 bg-gray-100 rounded-xl" />
@@ -100,7 +104,11 @@ export default function RecipesPage() {
 
   return (
     <div>
-      <h2 className="text-[22px] font-bold text-xhs mb-4">我的菜谱</h2>
+      <div className="flex items-center gap-2 mb-1">
+        <BookOpen size={22} className="text-xhs" />
+        <h2 className="text-[22px] font-bold text-xhs">我的菜谱</h2>
+      </div>
+      <p className="text-sm text-gray-400 mb-3">查看和管理已保存的菜谱</p>
 
       {/* Search bar */}
       <div className="relative mb-3">
@@ -151,14 +159,12 @@ export default function RecipesPage() {
 
       {/* Results */}
       {allRecipes.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <p className="text-5xl mb-4">📖</p>
+        <div className="text-center py-16 text-gray-300">
           <p className="text-sm font-medium">还没有保存的菜谱</p>
           <p className="text-xs mt-2">去「提取菜谱」提取第一条菜谱吧</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <p className="text-5xl mb-4">{favoritesOnly ? "⭐" : "🔍"}</p>
+        <div className="text-center py-16 text-gray-300">
           <p className="text-sm font-medium">
             {favoritesOnly ? "还没有收藏的菜谱" : "没有找到相关菜谱"}
           </p>

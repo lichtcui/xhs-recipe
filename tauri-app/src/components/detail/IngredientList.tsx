@@ -23,11 +23,14 @@ export default function IngredientList({
   if (items.length === 0) return null;
 
   return (
-    <div className="mb-4 text-sm text-gray-600">
-      <span className="font-bold">{icon} {label}</span>
-      <span className="ml-1">
-        · {items.map(fmtIngredient).join("、")}
-      </span>
+    <div className="mb-4">
+      <h3 className="font-semibold text-sm text-gray-500 mb-2 flex items-center gap-1.5">
+        {icon}
+        <span>{label}</span>
+      </h3>
+      <p className="text-sm text-gray-700 leading-relaxed">
+        {items.map(fmtIngredient).join("、")}
+      </p>
     </div>
   );
 }

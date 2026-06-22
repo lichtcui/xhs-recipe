@@ -25,9 +25,9 @@ export default function RecipeTags({ tags }: RecipeTagsProps) {
         <Badge
           key={tag}
           variant="secondary"
-          className={TAG_COLORS[tag] || "bg-gray-100 text-gray-600"}
+          className={(TAG_COLORS[tag] || "bg-gray-100 text-gray-600") + " text-[11px] px-2 py-0.5 font-normal"}
         >
-          #{tag}
+          {tag}
         </Badge>
       ))}
     </div>

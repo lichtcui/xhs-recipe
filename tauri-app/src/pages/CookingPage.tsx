@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ShoppingBasket, FlaskConical, Wrench, ListChecks } from "lucide-react";
 import { toast } from "sonner";
 import HeroSection from "@/components/detail/HeroSection";
 import RecipeTags from "@/components/detail/RecipeTags";
@@ -73,8 +73,7 @@ export default function CookingPage({ recipe, onBack }: CookingPageProps) {
     return (
       <div>
         <h2 className="text-[22px] font-bold text-xhs mb-4">菜谱详情</h2>
-        <div className="text-center py-12 text-gray-400">
-          <p className="text-4xl mb-3">🍳</p>
+        <div className="text-center py-12 text-gray-300">
           <p className="text-sm">选择一个菜谱查看详情</p>
           <button
             onClick={onBack}
@@ -129,31 +128,39 @@ export default function CookingPage({ recipe, onBack }: CookingPageProps) {
       {/* Frame gallery (original images) */}
       <FrameGallery imageUrls={currentRecipe.image_urls} />
 
-      {/* Ingredients with checkboxes */}
+      {/* Ingredients */}
       <IngredientList
-        icon="📋"
+        icon={<ShoppingBasket size={16} />}
         label="食材"
         items={currentRecipe.ingredients}
       />
 
-      {/* Seasonings with checkboxes */}
+      {/* Seasonings */}
       <IngredientList
-        icon="🧂"
+        icon={<FlaskConical size={16} />}
         label="调料"
         items={currentRecipe.seasonings}
       />
 
       {/* Equipment */}
       {currentRecipe.equipment.length > 0 && (
-        <div className="mb-4 text-sm text-gray-600">
-          <span className="font-bold">🔧 器具</span>
-          <span className="ml-1">· {currentRecipe.equipment.join("、")}</span>
+        <div className="mb-4">
+          <h3 className="font-semibold text-sm text-gray-500 mb-2 flex items-center gap-1.5">
+            <Wrench size={16} />
+            器具
+          </h3>
+          <p className="text-sm text-gray-700 leading-relaxed">
+            {currentRecipe.equipment.join("、")}
+          </p>
         </div>
       )}
 
-      {/* Steps timeline */}
+      {/* Steps */}
       <div className="mb-4">
-        <p className="font-bold text-gray-600 text-sm mb-3">📝 烹饪步骤</p>
+        <h3 className="font-semibold text-sm text-gray-500 mb-2 flex items-center gap-1.5">
+          <ListChecks size={16} />
+          烹饪步骤
+        </h3>
         <StepTimeline steps={currentRecipe.steps} />
       </div>
 
