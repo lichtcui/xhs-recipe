@@ -10,6 +10,7 @@ import { truncateUrl } from "@/lib/helpers";
 import { searchRecipes, filterByTag, collectTags } from "@/lib/searchUtils";
 import { getFavorites, favKey } from "@/lib/favorites";
 import CookingPage from "@/pages/CookingPage";
+import ErrorBoundary from "@/components/common/ErrorBoundary";
 import type { Recipe, RecipeSummary } from "@/types/recipe";
 
 export default function RecipesPage() {
@@ -95,10 +96,12 @@ export default function RecipesPage() {
   // Show recipe detail inline when one is selected
   if (selectedRecipe) {
     return (
-      <CookingPage
-        recipe={selectedRecipe}
-        onBack={() => setSelectedRecipe(null)}
-      />
+      <ErrorBoundary>
+        <CookingPage
+          recipe={selectedRecipe}
+          onBack={() => setSelectedRecipe(null)}
+        />
+      </ErrorBoundary>
     );
   }
 

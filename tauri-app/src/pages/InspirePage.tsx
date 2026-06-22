@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ExtractSection from "@/components/home/ExtractSection";
 import CookingPage from "@/pages/CookingPage";
+import ErrorBoundary from "@/components/common/ErrorBoundary";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Clock, Sparkles, ExternalLink } from "lucide-react";
@@ -29,20 +30,23 @@ export default function InspirePage() {
     setViewedRecipe(recipe);
   }, []);
 
-  // Show recipe detail inline when one is selected
-  if (viewedRecipe) {
-    return (
-      <CookingPage
-        recipe={viewedRecipe}
-        onBack={() => setViewedRecipe(null)}
-      />
-    );
-  }
-
+  // Must be defined before early return (React hooks order rule)
   const handleRetry = useCallback(() => {
     setWarning(null);
     setExtractedRecipes([]);
   }, []);
+
+  // Show recipe detail inline when one is selected
+  if (viewedRecipe) {
+    return (
+      <ErrorBoundary>
+        <CookingPage
+          recipe={viewedRecipe}
+          onBack={() => setViewedRecipe(null)}
+        />
+      </ErrorBoundary>
+    );
+  }
 
   const showContent = warning || extractedRecipes.length > 0 || busy;
 
