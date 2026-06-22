@@ -29,6 +29,7 @@ export default function CookingPage({ recipe, onBack }: CookingPageProps) {
     setPrevRecipe(recipe);
     setCurrentRecipe(recipe);
     setEditMode(false);
+    window.scrollTo(0, 0);
   }
 
   const isFavorite = currentRecipe
@@ -61,6 +62,7 @@ export default function CookingPage({ recipe, onBack }: CookingPageProps) {
       const saved = { ...edited, id: newId };
       setCurrentRecipe(saved);
       setEditMode(false);
+      window.scrollTo(0, 0);
       toast.success("菜谱已更新");
     } catch (err) {
       toast.error("保存失败", { description: String(err) });
@@ -91,7 +93,7 @@ export default function CookingPage({ recipe, onBack }: CookingPageProps) {
         <RecipeEditor
           recipe={currentRecipe}
           onSave={handleSave}
-          onCancel={() => setEditMode(false)}
+          onCancel={() => { setEditMode(false); window.scrollTo(0, 0); }}
         />
       </div>
     );
