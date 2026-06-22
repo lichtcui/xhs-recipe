@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, X, Clock } from "lucide-react";
+import { Search, X, Clock, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import { listRecipes, getRecipe, deleteRecipe } from "@/lib/tauri";
 import { truncateUrl } from "@/lib/helpers";
 import { searchRecipes, filterByTag, collectTags } from "@/lib/searchUtils";
@@ -17,6 +18,7 @@ export default function RecipesPage() {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<RecipeSummary | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -56,12 +58,20 @@ export default function RecipesPage() {
   };
 
   const handleDelete = async (summary: RecipeSummary) => {
-    if (!window.confirm(`确定删除「${summary.name}」？`)) return;
+    setDeleteConfirm(summary);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
     try {
-      await deleteRecipe(summary.id);
-      setAllRecipes((prev) => prev.filter((r) => r.id !== summary.id));
+      await deleteRecipe(deleteConfirm.id);
+      setAllRecipes((prev) => prev.filter((r) => r.id !== deleteConfirm.id));
+      toast.success(`已删除「${deleteConfirm.name}」`);
     } catch (err) {
       console.error("Failed to delete:", err);
+      toast.error(`删除失败`);
+    } finally {
+      setDeleteConfirm(null);
     }
   };
 
@@ -207,6 +217,45 @@ export default function RecipesPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+          onClick={() => setDeleteConfirm(null)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 mx-4 max-w-sm w-full shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-base">确认删除</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  确定删除「{deleteConfirm.name}」？此操作不可撤回。
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5 justify-end">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 text-sm font-medium rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 text-sm font-medium rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors"
+              >
+                删除
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
