@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { ChevronLeft } from "lucide-react";
+import { toast } from "sonner";
 import HeroSection from "@/components/detail/HeroSection";
 import RecipeTags from "@/components/detail/RecipeTags";
 import CookingInfoBar from "@/components/detail/CookingInfoBar";
@@ -7,7 +8,9 @@ import IngredientList from "@/components/detail/IngredientList";
 import StepTimeline from "@/components/detail/StepTimeline";
 import FrameGallery from "@/components/detail/FrameGallery";
 import TipList from "@/components/detail/TipList";
+import RecipeEditor from "@/components/inspire/RecipeEditor";
 import { getFavorites, favKey } from "@/lib/favorites";
+import { saveRecipe, deleteRecipe } from "@/lib/tauri";
 import type { Recipe } from "@/types/recipe";
 
 interface CookingPageProps {
@@ -17,12 +20,24 @@ interface CookingPageProps {
 
 export default function CookingPage({ recipe, onBackToInspire }: CookingPageProps) {
   const [favorites, setFavorites] = useState<Set<string>>(getFavorites);
+  const [editMode, setEditMode] = useState(false);
+  const [currentRecipe, setCurrentRecipe] = useState<Recipe | null>(recipe);
 
-  const isFavorite = recipe ? favorites.has(favKey(recipe.source_url, recipe.name)) : false;
+  // Sync currentRecipe when the incoming recipe changes
+  const [prevRecipe, setPrevRecipe] = useState<Recipe | null>(recipe);
+  if (recipe !== prevRecipe) {
+    setPrevRecipe(recipe);
+    setCurrentRecipe(recipe);
+    setEditMode(false);
+  }
+
+  const isFavorite = currentRecipe
+    ? favorites.has(favKey(currentRecipe.source_url, currentRecipe.name))
+    : false;
 
   const toggleFavorite = useCallback(() => {
-    if (!recipe) return;
-    const key = favKey(recipe.source_url, recipe.name);
+    if (!currentRecipe) return;
+    const key = favKey(currentRecipe.source_url, currentRecipe.name);
     setFavorites((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -33,9 +48,26 @@ export default function CookingPage({ recipe, onBackToInspire }: CookingPageProp
       localStorage.setItem("xhs-favorites", JSON.stringify([...next]));
       return next;
     });
-  }, [recipe]);
+  }, [currentRecipe]);
 
-  if (!recipe) {
+  const handleSave = useCallback(async (edited: Recipe) => {
+    if (!currentRecipe) return;
+    try {
+      // Overwrite the existing recipe file
+      if (currentRecipe.id) {
+        try { await deleteRecipe(currentRecipe.id); } catch { /* ok */ }
+      }
+      const newId = await saveRecipe(edited);
+      const saved = { ...edited, id: newId };
+      setCurrentRecipe(saved);
+      setEditMode(false);
+      toast.success("菜谱已更新");
+    } catch (err) {
+      toast.error("保存失败", { description: String(err) });
+    }
+  }, [currentRecipe]);
+
+  if (!currentRecipe) {
     return (
       <div>
         <h2 className="text-[22px] font-bold text-xhs mb-4">烹饪台</h2>
@@ -53,15 +85,29 @@ export default function CookingPage({ recipe, onBackToInspire }: CookingPageProp
     );
   }
 
+  if (editMode) {
+    return (
+      <div className="py-2">
+        <RecipeEditor
+          recipe={currentRecipe}
+          onSave={handleSave}
+          onRegenerate={() => toast.error("暂不支持从烹饪台重新生成")}
+          onCancel={() => setEditMode(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Hero with back button */}
       <div className="relative">
         <HeroSection
-          coverImageUrl={recipe.cover_image_url}
-          name={recipe.name}
+          coverImageUrl={currentRecipe.cover_image_url}
+          name={currentRecipe.name}
           isFavorite={isFavorite}
           onToggleFavorite={toggleFavorite}
+          onEdit={() => setEditMode(true)}
         />
         <button
           onClick={onBackToInspire}
@@ -72,46 +118,46 @@ export default function CookingPage({ recipe, onBackToInspire }: CookingPageProp
       </div>
 
       {/* Tags */}
-      <RecipeTags tags={recipe.tags} />
+      <RecipeTags tags={currentRecipe.tags} />
 
       {/* Cooking info */}
       <CookingInfoBar
-        totalTime={recipe.total_time}
+        totalTime={currentRecipe.total_time}
       />
 
       {/* Frame gallery (original images) */}
-      <FrameGallery imageUrls={recipe.image_urls} />
+      <FrameGallery imageUrls={currentRecipe.image_urls} />
 
       {/* Ingredients with checkboxes */}
       <IngredientList
         icon="📋"
         label="食材"
-        items={recipe.ingredients}
+        items={currentRecipe.ingredients}
       />
 
       {/* Seasonings with checkboxes */}
       <IngredientList
         icon="🧂"
         label="调料"
-        items={recipe.seasonings}
+        items={currentRecipe.seasonings}
       />
 
       {/* Equipment */}
-      {recipe.equipment.length > 0 && (
+      {currentRecipe.equipment.length > 0 && (
         <div className="mb-4 text-sm text-gray-600">
           <span className="font-bold">🔧 器具</span>
-          <span className="ml-1">· {recipe.equipment.join("、")}</span>
+          <span className="ml-1">· {currentRecipe.equipment.join("、")}</span>
         </div>
       )}
 
       {/* Steps timeline */}
       <div className="mb-4">
         <p className="font-bold text-gray-600 text-sm mb-3">📝 烹饪步骤</p>
-        <StepTimeline steps={recipe.steps} />
+        <StepTimeline steps={currentRecipe.steps} />
       </div>
 
       {/* Tips */}
-      <TipList tips={recipe.tips} />
+      <TipList tips={currentRecipe.tips} />
 
       {/* Bottom padding */}
       <div className="h-8" />
