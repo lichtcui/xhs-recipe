@@ -37,6 +37,13 @@ export default function RecipesPage() {
     load();
   }, [load]);
 
+  // Reload when recipe is saved from another tab
+  useEffect(() => {
+    const handler = () => load();
+    window.addEventListener("xhs:recipes-changed", handler);
+    return () => window.removeEventListener("xhs:recipes-changed", handler);
+  }, [load]);
+
   const tags = useMemo(() => collectTags(allRecipes), [allRecipes]);
 
   const [favorites, setFavorites] = useState<Set<string>>(getFavorites);

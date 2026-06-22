@@ -1,11 +1,12 @@
 import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Clock, Sparkles, ExternalLink } from "lucide-react";
+import { X, Clock, Sparkles, ExternalLink, BookmarkPlus, BookmarkCheck } from "lucide-react";
 import { toast } from "sonner";
 import ExtractSection from "@/components/home/ExtractSection";
 import CookingPage from "@/pages/CookingPage";
 import RecipeEditor from "@/components/inspire/RecipeEditor";
 import ErrorBoundary from "@/components/common/ErrorBoundary";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { truncateUrl } from "@/lib/helpers";
@@ -17,12 +18,18 @@ export default function InspirePage() {
   const [viewedRecipe, setViewedRecipe] = useState<Recipe | null>(null);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [extractedRecipes, setExtractedRecipes] = useState<Recipe[]>([]);
+  const [savedRecipeIds, setSavedRecipeIds] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const hasRunRef = useRef(false);
 
   const handleExtracted = useCallback((recipes: Recipe[]) => {
     setWarning(null);
     setExtractedRecipes(recipes);
+
+    const foodRecipes = recipes.filter((r) => r.is_food);
+    if (foodRecipes.length > 0) {
+      window.dispatchEvent(new CustomEvent("xhs:recipes-changed"));
+    }
 
     const nonFood = recipes.filter((r) => !r.is_food);
     if (nonFood.length > 0 && recipes.every((r) => !r.is_food)) {
@@ -47,6 +54,7 @@ export default function InspirePage() {
   const handleCloseResults = useCallback(() => {
     setExtractedRecipes([]);
     setWarning(null);
+    setSavedRecipeIds(new Set());
   }, []);
 
   const handleEditSave = useCallback(async (recipe: Recipe) => {
@@ -59,7 +67,24 @@ export default function InspirePage() {
         description: recipe.name,
         action: { label: "查看", onClick: () => setViewedRecipe(recipe) },
       });
+      window.dispatchEvent(new CustomEvent("xhs:recipes-changed"));
       setEditingRecipe(null);
+    } catch (err) {
+      toast.error("保存失败", { description: String(err) });
+    }
+  }, []);
+
+  const handleQuickSave = useCallback(async (recipe: Recipe, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await saveRecipe(recipe);
+      const key = recipe.id || recipe.name;
+      setSavedRecipeIds((prev) => new Set(prev).add(key));
+      window.dispatchEvent(new CustomEvent("xhs:recipes-changed"));
+      toast.success("菜谱已保存", {
+        description: recipe.name,
+        action: { label: "查看", onClick: () => setViewedRecipe(recipe) },
+      });
     } catch (err) {
       toast.error("保存失败", { description: String(err) });
     }
@@ -211,6 +236,25 @@ export default function InspirePage() {
                               </Badge>
                             ))}
                           </div>
+                        )}
+                      </div>
+                      {/* Save button */}
+                      <div className="shrink-0 flex items-center">
+                        {savedRecipeIds.has(r.id || r.name) ? (
+                          <div className="flex items-center gap-1 text-green-500 text-[11px] font-medium">
+                            <BookmarkCheck size={16} />
+                            <span className="hidden sm:inline">已保存</span>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => handleQuickSave(r, e)}
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-xhs hover:bg-xhs/5 rounded-full"
+                            title="保存"
+                          >
+                            <BookmarkPlus size={16} />
+                          </Button>
                         )}
                       </div>
                     </CardContent>
