@@ -40,7 +40,8 @@ pub async fn process(
 
     let mut text_parts = vec![format!("标题：{}", raw.title)];
     if !raw.text_content.is_empty() {
-        text_parts.push(format!("描述：{}", raw.text_content));
+        let cleaned = strip_trailing_hashtags(&raw.text_content);
+        text_parts.push(format!("描述：{}", cleaned));
     }
 
     let mut image_texts = Vec::new();
@@ -738,6 +739,38 @@ fn text_similar(a: &str, b: &str) -> bool {
     overlap as f64 / short.chars().count() as f64 > 0.7
 }
 
+/// Strip trailing hashtag-only lines from text content.
+///
+/// 小红书 posts often end with dozens/hundreds of tags like "#美食 #家常菜 #烹饪".
+/// These waste tokens when sent to the LLM and are not useful for recipe extraction.
+fn strip_trailing_hashtags(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.is_empty() {
+        return text.to_string();
+    }
+
+    let mut end = lines.len();
+    for line in lines.iter().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            // Skip blank lines between content and tags
+            continue;
+        }
+        // Check if every non-whitespace token starts with '#'
+        if trimmed.split_whitespace().all(|token| token.starts_with('#')) {
+            end -= 1;
+        } else {
+            break;
+        }
+    }
+
+    if end == 0 || end == lines.len() {
+        text.to_string()
+    } else {
+        lines[..end].join("\n").trim().to_string()
+    }
+}
+
 // ── Orchestration ─────────────────────────────────────────────────
 
 async fn transcribe_video(
@@ -825,4 +858,43 @@ pub fn check_ffmpeg() -> bool {
 
 pub fn check_swiftc() -> bool {
     crate::which("swiftc").is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_trailing_hashtags_none() {
+        assert_eq!(strip_trailing_hashtags("今天做了红烧肉"), "今天做了红烧肉");
+    }
+
+    #[test]
+    fn test_strip_trailing_hashtags_single_line() {
+        let input = "今天做了红烧肉，超级好吃！\n#美食 #家常菜 #烹饪";
+        assert_eq!(strip_trailing_hashtags(input), "今天做了红烧肉，超级好吃！");
+    }
+
+    #[test]
+    fn test_strip_trailing_hashtags_multiple_lines() {
+        let input = "今天做了红烧肉\n\n#美食 #家常菜\n#下厨 #今天吃什么\n#我的拿手菜";
+        assert_eq!(strip_trailing_hashtags(input), "今天做了红烧肉");
+    }
+
+    #[test]
+    fn test_strip_trailing_hashtags_inline_not_stripped() {
+        let input = "推荐#家常菜 今天做了红烧肉 #美食";
+        assert_eq!(strip_trailing_hashtags(input), "推荐#家常菜 今天做了红烧肉 #美食");
+    }
+
+    #[test]
+    fn test_strip_trailing_hashtags_empty() {
+        assert_eq!(strip_trailing_hashtags(""), "");
+    }
+
+    #[test]
+    fn test_strip_trailing_hashtags_all_tags() {
+        let input = "#美食\n#家常菜\n#烹饪";
+        assert_eq!(strip_trailing_hashtags(input), input);
+    }
 }
