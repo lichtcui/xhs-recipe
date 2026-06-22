@@ -1,6 +1,6 @@
-import { Sparkles, BookOpen, CookingPot, User } from "lucide-react";
+import { Sparkles, BookOpen, User } from "lucide-react";
 
-export type Tab = "inspire" | "recipes" | "cooking" | "profile";
+export type Tab = "inspire" | "recipes" | "profile";
 
 interface TabBarProps {
   currentTab: Tab;
@@ -10,7 +10,6 @@ interface TabBarProps {
 const TABS: { id: Tab; label: string; icon: typeof Sparkles }[] = [
   { id: "inspire", label: "灵感厨房", icon: Sparkles },
   { id: "recipes", label: "我的菜谱", icon: BookOpen },
-  { id: "cooking", label: "烹饪台", icon: CookingPot },
   { id: "profile", label: "我的", icon: User },
 ];
 

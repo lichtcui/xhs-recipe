@@ -7,18 +7,16 @@ import { listRecipes, getRecipe, deleteRecipe } from "@/lib/tauri";
 import { truncateUrl } from "@/lib/helpers";
 import { searchRecipes, filterByTag, collectTags } from "@/lib/searchUtils";
 import { getFavorites, favKey } from "@/lib/favorites";
+import CookingPage from "@/pages/CookingPage";
 import type { Recipe, RecipeSummary } from "@/types/recipe";
 
-interface RecipesPageProps {
-  onViewRecipe: (recipe: Recipe) => void;
-}
-
-export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
+export default function RecipesPage() {
   const [allRecipes, setAllRecipes] = useState<RecipeSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -51,7 +49,7 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
   const handleView = async (summary: RecipeSummary) => {
     try {
       const recipe = await getRecipe(summary.id);
-      onViewRecipe(recipe);
+      setSelectedRecipe(recipe);
     } catch (err) {
       console.error("Failed to load recipe:", err);
     }
@@ -66,6 +64,16 @@ export default function RecipesPage({ onViewRecipe }: RecipesPageProps) {
       console.error("Failed to delete:", err);
     }
   };
+
+  // Show recipe detail inline when one is selected
+  if (selectedRecipe) {
+    return (
+      <CookingPage
+        recipe={selectedRecipe}
+        onBack={() => setSelectedRecipe(null)}
+      />
+    );
+  }
 
   if (loading) {
     return (

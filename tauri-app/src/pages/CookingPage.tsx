@@ -15,10 +15,10 @@ import type { Recipe } from "@/types/recipe";
 
 interface CookingPageProps {
   recipe: Recipe | null;
-  onBackToInspire: () => void;
+  onBack: () => void;
 }
 
-export default function CookingPage({ recipe, onBackToInspire }: CookingPageProps) {
+export default function CookingPage({ recipe, onBack }: CookingPageProps) {
   const [favorites, setFavorites] = useState<Set<string>>(getFavorites);
   const [editMode, setEditMode] = useState(false);
   const [currentRecipe, setCurrentRecipe] = useState<Recipe | null>(recipe);
@@ -70,15 +70,15 @@ export default function CookingPage({ recipe, onBackToInspire }: CookingPageProp
   if (!currentRecipe) {
     return (
       <div>
-        <h2 className="text-[22px] font-bold text-xhs mb-4">烹饪台</h2>
+        <h2 className="text-[22px] font-bold text-xhs mb-4">菜谱详情</h2>
         <div className="text-center py-12 text-gray-400">
           <p className="text-4xl mb-3">🍳</p>
-          <p className="text-sm">选择一个菜谱开始烹饪</p>
+          <p className="text-sm">选择一个菜谱查看详情</p>
           <button
-            onClick={onBackToInspire}
+            onClick={onBack}
             className="mt-3 text-xs text-xhs hover:underline"
           >
-            去灵感厨房提取菜谱
+            返回
           </button>
         </div>
       </div>
@@ -91,7 +91,7 @@ export default function CookingPage({ recipe, onBackToInspire }: CookingPageProp
         <RecipeEditor
           recipe={currentRecipe}
           onSave={handleSave}
-          onRegenerate={() => toast.error("暂不支持从烹饪台重新生成")}
+          onRegenerate={() => toast.error("暂不支持重新生成")}
           onCancel={() => setEditMode(false)}
         />
       </div>
@@ -110,7 +110,7 @@ export default function CookingPage({ recipe, onBackToInspire }: CookingPageProp
           onEdit={() => setEditMode(true)}
         />
         <button
-          onClick={onBackToInspire}
+          onClick={onBack}
           className="absolute top-3 left-3 z-10 bg-white/80 backdrop-blur-sm rounded-full p-1.5 shadow hover:bg-white transition-colors"
         >
           <ChevronLeft size={18} className="text-gray-700" />

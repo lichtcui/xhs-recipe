@@ -1,15 +1,13 @@
 import { useState, useCallback } from "react";
 import ExtractSection from "@/components/home/ExtractSection";
 import RecipeList from "@/components/home/RecipeList";
+import CookingPage from "@/pages/CookingPage";
 import type { Recipe } from "@/types/recipe";
 
-interface InspirePageProps {
-  onViewRecipe: (recipe: Recipe) => void;
-}
-
-export default function InspirePage({ onViewRecipe }: InspirePageProps) {
+export default function InspirePage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [warning, setWarning] = useState<string | null>(null);
+  const [viewedRecipe, setViewedRecipe] = useState<Recipe | null>(null);
 
   const handleExtracted = useCallback((recipes: Recipe[]) => {
     setRefreshKey((k) => k + 1);
@@ -22,14 +20,19 @@ export default function InspirePage({ onViewRecipe }: InspirePageProps) {
     }
   }, []);
 
-  const handleRefine = useCallback(
-    (recipe: Recipe) => {
-      // Phase 2.4: Temporary — navigate to CookingPage with recipe
-      // Phase 3 will replace this with RecipeEditor
-      onViewRecipe(recipe);
-    },
-    [onViewRecipe]
-  );
+  const handleRefine = useCallback((recipe: Recipe) => {
+    setViewedRecipe(recipe);
+  }, []);
+
+  // Show recipe detail inline when one is selected
+  if (viewedRecipe) {
+    return (
+      <CookingPage
+        recipe={viewedRecipe}
+        onBack={() => setViewedRecipe(null)}
+      />
+    );
+  }
 
   return (
     <div>
@@ -51,7 +54,7 @@ export default function InspirePage({ onViewRecipe }: InspirePageProps) {
         <h3 className="text-[17px] font-semibold text-gray-500 mb-3">
           已保存的菜谱
         </h3>
-        <RecipeList refreshTrigger={refreshKey} onViewRecipe={onViewRecipe} />
+        <RecipeList refreshTrigger={refreshKey} onViewRecipe={handleRefine} />
       </div>
     </div>
   );
