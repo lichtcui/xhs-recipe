@@ -31,7 +31,6 @@ export default function PrerequisiteCheck() {
           <p>ffmpeg: {status.ffmpeg ? "✅" : "❌ 未安装"}</p>
           <p>tesseract: {status.tesseract ? "✅" : "❌ 未安装"}</p>
           <p>qwen-asr: {status.qwen_asr ? "✅" : "❌ 未安装"}</p>
-          <p>Cookie: {status.cookies_exist ? "✅ 已配置" : "⚠️ 未配置"}</p>
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">检测中...</p>

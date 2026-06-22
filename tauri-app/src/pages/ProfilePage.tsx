@@ -1,6 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -8,11 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import { useSettings } from "@/hooks/useSettings";
-import CookieManager from "@/components/settings/CookieManager";
-import PrerequisiteCheck from "@/components/settings/PrerequisiteCheck";
+import { User } from "lucide-react";
 import type { ReactNode } from "react";
 
 function FormField({
@@ -39,40 +36,44 @@ export default function ProfilePage() {
 
   return (
     <div>
-      <h2 className="text-[22px] font-bold text-xhs mb-5">我的</h2>
+      <div className="flex items-center gap-2 mb-6">
+        <User size={22} className="text-xhs" />
+        <h2 className="text-[22px] font-bold text-xhs">设置</h2>
+      </div>
 
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg">提取配置</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {/* ASR Model */}
-          <FormField id="asr-model" label="ASR 模型">
-            <Select
-              value={settings.asrModel}
-              onValueChange={(v) => updateSettings({ asrModel: v })}
-            >
-              <SelectTrigger id="asr-model">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="qwen3-asr-0.6b">
-                  qwen3-asr-0.6b (快速)
-                </SelectItem>
-                <SelectItem value="qwen3-asr-1.7b">
-                  qwen3-asr-1.7b (高精度)
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </FormField>
+      {/* Voice recognition */}
+      <div className="mb-6">
+        <h3 className="text-base font-semibold text-gray-500 mb-4">语音识别</h3>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="asr-switch" className="text-sm font-medium cursor-pointer">
+              ASR 精度
+            </Label>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs ${settings.asrModel === "qwen3-asr-0.6b" ? "text-xhs font-medium" : "text-gray-400"}`}>高速</span>
+              <Switch
+                id="asr-switch"
+                checked={settings.asrModel === "qwen3-asr-1.7b"}
+                onCheckedChange={(v) =>
+                  updateSettings({ asrModel: v ? "qwen3-asr-1.7b" : "qwen3-asr-0.6b" })
+                }
+              />
+              <span className={`text-xs ${settings.asrModel === "qwen3-asr-1.7b" ? "text-xhs font-medium" : "text-gray-400"}`}>高精度</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
-          {/* LLM Model */}
+      {/* LLM API */}
+      <div className="border-t border-gray-100 pt-6">
+        <h3 className="text-base font-semibold text-gray-500 mb-4">大模型 API</h3>
+        <div className="space-y-4">
           <FormField id="llm-model" label="LLM 模型">
             <Select
               value={settings.llmModel}
               onValueChange={(v) => updateSettings({ llmModel: v })}
             >
-              <SelectTrigger id="llm-model">
+              <SelectTrigger id="llm-model" className="rounded-xl border-gray-200 bg-white/80 focus:ring-xhs/30 focus:ring-offset-0 px-2.5 py-1.5">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -84,19 +85,6 @@ export default function ProfilePage() {
             </Select>
           </FormField>
 
-          {/* OCR Toggle */}
-          <div className="flex items-center justify-between">
-            <Label htmlFor="ocr-toggle" className="text-sm font-medium cursor-pointer">
-              启用图片 OCR
-            </Label>
-            <Switch
-              id="ocr-toggle"
-              checked={settings.ocrImages}
-              onCheckedChange={(v) => updateSettings({ ocrImages: v })}
-            />
-          </div>
-
-          {/* API Key */}
           <FormField id="api-key" label="API Key">
             <Input
               id="api-key"
@@ -104,11 +92,11 @@ export default function ProfilePage() {
               placeholder="留空则使用环境变量或钥匙串"
               value={settings.apiKey}
               onChange={(e) => updateSettings({ apiKey: e.target.value })}
+              className="rounded-xl border-gray-200 bg-white/80 focus-visible:ring-xhs/30 focus-visible:ring-offset-0"
               autoComplete="off"
             />
           </FormField>
 
-          {/* Timeout */}
           <FormField id="timeout" label="超时时间（秒）">
             <Input
               id="timeout"
@@ -119,18 +107,11 @@ export default function ProfilePage() {
               onChange={(e) =>
                 updateSettings({ timeout: parseInt(e.target.value) || 300 })
               }
+              className="rounded-xl border-gray-200 bg-white/80 focus-visible:ring-xhs/30 focus-visible:ring-offset-0"
             />
           </FormField>
-
-          <Separator />
-
-          <CookieManager />
-
-          <Separator />
-
-          <PrerequisiteCheck />
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize)]
 pub struct ExtractSettings {
     pub asr_model: String,
-    pub ocr_images: bool,
     pub llm_model: String,
     pub api_key: Option<String>,
     #[allow(dead_code)]
@@ -84,14 +83,14 @@ pub async fn extract(
             });
         }
     });
-    let text = textifier::process(&raw, &settings.asr_model, settings.ocr_images, Some(on_progress))
+    let text = textifier::process(&raw, &settings.asr_model, true, Some(on_progress))
         .await
         .map_err(|e| e.to_string())?;
 
     // Stage 5: Analyze
     emit("analyzing", "");
     let client = analyzer::RealHttpClient::new();
-    let mut recipes = if settings.ocr_images && !raw.has_video && !text.image_texts.is_empty() {
+    let mut recipes = if true && !raw.has_video && !text.image_texts.is_empty() {
         let count = detect_collection_count(&text.title);
         let total = count.unwrap_or(text.image_texts.len());
         if count.is_some() && total > 1 {
@@ -221,7 +220,7 @@ pub async fn extract_text(
         }
     });
 
-    let text = textifier::process(&raw, &settings.asr_model, settings.ocr_images, Some(on_progress))
+    let text = textifier::process(&raw, &settings.asr_model, true, Some(on_progress))
         .await
         .map_err(|e| e.to_string())?;
 
