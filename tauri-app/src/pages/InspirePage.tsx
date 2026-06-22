@@ -1,19 +1,24 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { X, Clock, Sparkles, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
 import ExtractSection from "@/components/home/ExtractSection";
 import CookingPage from "@/pages/CookingPage";
+import RecipeEditor from "@/components/inspire/RecipeEditor";
 import ErrorBoundary from "@/components/common/ErrorBoundary";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Sparkles, ExternalLink } from "lucide-react";
 import { truncateUrl } from "@/lib/helpers";
+import { saveRecipe, deleteRecipe } from "@/lib/tauri";
 import type { Recipe } from "@/types/recipe";
 
 export default function InspirePage() {
   const [warning, setWarning] = useState<string | null>(null);
   const [viewedRecipe, setViewedRecipe] = useState<Recipe | null>(null);
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [extractedRecipes, setExtractedRecipes] = useState<Recipe[]>([]);
   const [busy, setBusy] = useState(false);
+  const hasRunRef = useRef(false);
 
   const handleExtracted = useCallback((recipes: Recipe[]) => {
     setWarning(null);
@@ -26,17 +31,41 @@ export default function InspirePage() {
     }
   }, []);
 
-  const handleRefine = useCallback((recipe: Recipe) => {
-    setViewedRecipe(recipe);
+  const handleBusyChange = useCallback((b: boolean) => {
+    setBusy(b);
+    if (b && !hasRunRef.current) {
+      // New extraction started: clear old results
+      setExtractedRecipes([]);
+      setWarning(null);
+      hasRunRef.current = true;
+    } else if (!b) {
+      // Going idle: reset tracking so next extraction clears old results
+      hasRunRef.current = false;
+    }
   }, []);
 
-  // Must be defined before early return (React hooks order rule)
-  const handleRetry = useCallback(() => {
-    setWarning(null);
+  const handleCloseResults = useCallback(() => {
     setExtractedRecipes([]);
+    setWarning(null);
   }, []);
 
-  // Show recipe detail inline when one is selected
+  const handleEditSave = useCallback(async (recipe: Recipe) => {
+    try {
+      if (recipe.id) {
+        try { await deleteRecipe(recipe.id); } catch { /* ok */ }
+      }
+      await saveRecipe(recipe);
+      toast.success("菜谱已保存", {
+        description: recipe.name,
+        action: { label: "查看", onClick: () => setViewedRecipe(recipe) },
+      });
+      setEditingRecipe(null);
+    } catch (err) {
+      toast.error("保存失败", { description: String(err) });
+    }
+  }, []);
+
+  // Show recipe detail when "查看" is clicked from toast
   if (viewedRecipe) {
     return (
       <ErrorBoundary>
@@ -44,6 +73,21 @@ export default function InspirePage() {
           recipe={viewedRecipe}
           onBack={() => setViewedRecipe(null)}
         />
+      </ErrorBoundary>
+    );
+  }
+
+  // Show inline recipe editor when clicking a card in extraction results
+  if (editingRecipe) {
+    return (
+      <ErrorBoundary>
+        <div className="py-2">
+          <RecipeEditor
+            recipe={editingRecipe}
+            onSave={handleEditSave}
+            onCancel={() => setEditingRecipe(null)}
+          />
+        </div>
       </ErrorBoundary>
     );
   }
@@ -61,8 +105,7 @@ export default function InspirePage() {
 
       <ExtractSection
         onExtracted={handleExtracted}
-        onRefineRecipe={handleRefine}
-        onBusyChange={setBusy}
+        onBusyChange={handleBusyChange}
       />
 
       {/* Warning */}
@@ -76,7 +119,7 @@ export default function InspirePage() {
           >
             <span>{warning}</span>
             <button
-              onClick={handleRetry}
+              onClick={handleCloseResults}
               className="text-xs text-amber-600 underline whitespace-nowrap ml-2"
             >
               重新提取
@@ -94,12 +137,21 @@ export default function InspirePage() {
             transition={{ delay: 0.15 }}
             className="mt-8"
           >
-            <h3 className="text-[17px] font-semibold text-gray-500 mb-3 flex items-center gap-1.5">
-              <span>提取结果</span>
-              <span className="text-xs font-normal text-gray-400">
-                ({extractedRecipes.length} 个菜谱)
-              </span>
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[17px] font-semibold text-gray-500 flex items-center gap-1.5">
+                <span>提取结果</span>
+                <span className="text-xs font-normal text-gray-400">
+                  ({extractedRecipes.length} 个菜谱)
+                </span>
+              </h3>
+              <button
+                onClick={handleCloseResults}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                title="关闭"
+              >
+                <X size={18} />
+              </button>
+            </div>
             <div className="grid gap-3">
               {extractedRecipes.map((r, i) => (
                 <motion.div
@@ -110,7 +162,7 @@ export default function InspirePage() {
                 >
                   <Card
                     className="cursor-pointer hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 overflow-hidden rounded-xl border-gray-100"
-                    onClick={() => handleRefine(r)}
+                    onClick={() => setEditingRecipe(r)}
                   >
                     <CardContent className="flex gap-3 p-3">
                       {/* Cover image */}
