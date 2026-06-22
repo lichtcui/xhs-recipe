@@ -8,7 +8,7 @@ interface TabBarProps {
 }
 
 const TABS: { id: Tab; label: string; icon: typeof Sparkles }[] = [
-  { id: "inspire", label: "灵感厨房", icon: Sparkles },
+  { id: "inspire", label: "提取菜谱", icon: Sparkles },
   { id: "recipes", label: "我的菜谱", icon: BookOpen },
   { id: "profile", label: "我的", icon: User },
 ];

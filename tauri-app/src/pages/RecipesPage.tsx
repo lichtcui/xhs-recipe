@@ -154,7 +154,7 @@ export default function RecipesPage() {
         <div className="text-center py-16 text-gray-400">
           <p className="text-5xl mb-4">📖</p>
           <p className="text-sm font-medium">还没有保存的菜谱</p>
-          <p className="text-xs mt-2">去「灵感厨房」提取第一条菜谱吧</p>
+          <p className="text-xs mt-2">去「提取菜谱」提取第一条菜谱吧</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
