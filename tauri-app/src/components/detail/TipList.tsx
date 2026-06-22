@@ -1,5 +1,4 @@
 import { Lightbulb } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 
 interface TipListProps {
   tips: string[];
@@ -14,20 +13,18 @@ export default function TipList({ tips }: TipListProps) {
   });
 
   return (
-    <div className="mb-4">
+    <div className="mb-6">
       <h3 className="font-semibold text-sm text-gray-500 mb-2 flex items-center gap-1.5">
         <Lightbulb size={16} />
         小贴士
       </h3>
-      <Card>
-        <CardContent className="p-3 space-y-2">
-          {cleaned.map((tip, i) => (
-            <p key={i} className="text-sm text-gray-700 leading-relaxed">
-              • {tip}
-            </p>
-          ))}
-        </CardContent>
-      </Card>
+      <div className="space-y-1">
+        {cleaned.map((tip, i) => (
+          <p key={i} className="text-sm text-gray-600 leading-relaxed">
+            • {tip}
+          </p>
+        ))}
+      </div>
     </div>
   );
 }

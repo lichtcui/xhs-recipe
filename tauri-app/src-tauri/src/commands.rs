@@ -247,3 +247,14 @@ pub async fn analyze_recipe(
         .map_err(|e| e.to_string())?;
     Ok(recipes)
 }
+
+// ── Open URL in system browser ────────────────────────
+
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map_err(|e| format!("打开链接失败: {}", e))?;
+    Ok(())
+}

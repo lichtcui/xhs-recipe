@@ -16,6 +16,7 @@ fn main() {
             commands::get_recipe,
             commands::delete_recipe,
             commands::save_recipe,
+            commands::open_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -2,16 +2,20 @@ import { useState, useCallback } from "react";
 import { ChevronLeft, ShoppingBasket, FlaskConical, Wrench, ListChecks } from "lucide-react";
 import { toast } from "sonner";
 import HeroSection from "@/components/detail/HeroSection";
-import RecipeTags from "@/components/detail/RecipeTags";
-import CookingInfoBar from "@/components/detail/CookingInfoBar";
-import IngredientList from "@/components/detail/IngredientList";
 import StepTimeline from "@/components/detail/StepTimeline";
-import FrameGallery from "@/components/detail/FrameGallery";
 import TipList from "@/components/detail/TipList";
 import RecipeEditor from "@/components/inspire/RecipeEditor";
 import { getFavorites, favKey } from "@/lib/favorites";
 import { saveRecipe, deleteRecipe } from "@/lib/tauri";
-import type { Recipe } from "@/types/recipe";
+import { fmtAmount } from "@/lib/helpers";
+import type { Recipe, Ingredient } from "@/types/recipe";
+
+function fmtIngredient(item: Ingredient): string {
+  let s = item.name;
+  if (item.amount) s += fmtAmount(item.amount);
+  if (item.prep) s += `（${item.prep}）`;
+  return s;
+}
 
 interface CookingPageProps {
   recipe: Recipe | null;
@@ -105,6 +109,9 @@ export default function CookingPage({ recipe, onBack }: CookingPageProps) {
         <HeroSection
           coverImageUrl={currentRecipe.cover_image_url}
           name={currentRecipe.name}
+          tags={currentRecipe.tags}
+          totalTime={currentRecipe.total_time}
+          sourceUrl={currentRecipe.source_url}
           isFavorite={isFavorite}
           onToggleFavorite={toggleFavorite}
           onEdit={() => setEditMode(true)}
@@ -117,46 +124,39 @@ export default function CookingPage({ recipe, onBack }: CookingPageProps) {
         </button>
       </div>
 
-      {/* Tags */}
-      <RecipeTags tags={currentRecipe.tags} />
+      {/* Region: 食材 + 调料 + 器具 */}
+      <div className="mb-6 space-y-1.5">
+        {currentRecipe.ingredients.length > 0 && (
+          <div className="flex items-baseline gap-1.5 text-sm">
+            <ShoppingBasket size={14} className="shrink-0 text-gray-400" />
+            <span className="font-semibold text-gray-500 shrink-0">食材</span>
+            <span className="text-gray-700 leading-relaxed">
+              {currentRecipe.ingredients.map(fmtIngredient).join("、")}
+            </span>
+          </div>
+        )}
+        {currentRecipe.seasonings.length > 0 && (
+          <div className="flex items-baseline gap-1.5 text-sm">
+            <FlaskConical size={14} className="shrink-0 text-gray-400" />
+            <span className="font-semibold text-gray-500 shrink-0">调料</span>
+            <span className="text-gray-700 leading-relaxed">
+              {currentRecipe.seasonings.map(fmtIngredient).join("、")}
+            </span>
+          </div>
+        )}
+        {currentRecipe.equipment.length > 0 && (
+          <div className="flex items-baseline gap-1.5 text-sm">
+            <Wrench size={14} className="shrink-0 text-gray-400" />
+            <span className="font-semibold text-gray-500 shrink-0">器具</span>
+            <span className="text-gray-700 leading-relaxed">
+              {currentRecipe.equipment.join("、")}
+            </span>
+          </div>
+        )}
+      </div>
 
-      {/* Cooking info */}
-      <CookingInfoBar
-        totalTime={currentRecipe.total_time}
-      />
-
-      {/* Frame gallery (original images) */}
-      <FrameGallery imageUrls={currentRecipe.image_urls} />
-
-      {/* Ingredients */}
-      <IngredientList
-        icon={<ShoppingBasket size={16} />}
-        label="食材"
-        items={currentRecipe.ingredients}
-      />
-
-      {/* Seasonings */}
-      <IngredientList
-        icon={<FlaskConical size={16} />}
-        label="调料"
-        items={currentRecipe.seasonings}
-      />
-
-      {/* Equipment */}
-      {currentRecipe.equipment.length > 0 && (
-        <div className="mb-4">
-          <h3 className="font-semibold text-sm text-gray-500 mb-2 flex items-center gap-1.5">
-            <Wrench size={16} />
-            器具
-          </h3>
-          <p className="text-sm text-gray-700 leading-relaxed">
-            {currentRecipe.equipment.join("、")}
-          </p>
-        </div>
-      )}
-
-      {/* Steps */}
-      <div className="mb-4">
+      {/* Region: 烹饪步骤 */}
+      <div className="mb-6">
         <h3 className="font-semibold text-sm text-gray-500 mb-2 flex items-center gap-1.5">
           <ListChecks size={16} />
           烹饪步骤
@@ -164,7 +164,7 @@ export default function CookingPage({ recipe, onBack }: CookingPageProps) {
         <StepTimeline steps={currentRecipe.steps} />
       </div>
 
-      {/* Tips */}
+      {/* Region: 小贴士 */}
       <TipList tips={currentRecipe.tips} />
 
       {/* Bottom padding */}
