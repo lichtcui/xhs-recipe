@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Plus, X, Save, ChevronLeft } from "lucide-react";
 import type { Recipe, Ingredient, Step } from "@/types/recipe";
@@ -43,7 +42,7 @@ function InlineField({
 }) {
   return (
     <div className="space-y-1">
-      <Label className="text-xs text-gray-400">{label}</Label>
+      <Label className="text-sm font-semibold">{label}</Label>
       <Input
         type={type}
         value={value}
@@ -263,255 +262,252 @@ export default function RecipeEditor({
       </button>
 
       {/* ── Basic Info ── */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          {/* Name */}
+      <div className="space-y-3">
+        {/* Name */}
+        <InlineField
+          label="菜名"
+          value={edited.name}
+          onChange={(v) => updateField("name", v)}
+          placeholder="菜名"
+        />
+
+        {/* Time + Tags row */}
+        <div className="grid grid-cols-3 gap-3">
           <InlineField
-            label="菜名"
-            value={edited.name}
-            onChange={(v) => updateField("name", v)}
-            placeholder="菜名"
+            label="烹饪时间"
+            value={edited.total_time || ""}
+            onChange={(v) => updateField("total_time", v || undefined)}
+            placeholder="如 45分钟"
           />
+          <div className="col-span-2" />
+        </div>
 
-          {/* Time + Tags row */}
-          <div className="grid grid-cols-3 gap-3">
-            <InlineField
-              label="烹饪时间"
-              value={edited.total_time || ""}
-              onChange={(v) => updateField("total_time", v || undefined)}
-              placeholder="如 45分钟"
-            />
-            <div className="col-span-2" />
+        {/* Tags */}
+        <div className="space-y-1.5">
+          <Label className="text-sm font-semibold">标签</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {(edited.tags || []).map((tag, i) => (
+              <Badge key={i} variant="secondary" className="gap-1 pr-1">
+                {tag}
+                <button onClick={() => removeTag(i)} className="hover:text-red-500">
+                  <X size={12} />
+                </button>
+              </Badge>
+            ))}
+            <TagInput onAdd={addTag} />
           </div>
+        </div>
+      </div>
 
-          {/* Tags */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-gray-400">标签</Label>
-            <div className="flex flex-wrap gap-1.5">
-              {(edited.tags || []).map((tag, i) => (
-                <Badge key={i} variant="secondary" className="gap-1 pr-1">
-                  {tag}
-                  <button onClick={() => removeTag(i)} className="hover:text-red-500">
-                    <X size={12} />
-                  </button>
-                </Badge>
-              ))}
-              <TagInput onAdd={addTag} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <Separator />
 
       {/* ── Ingredients ── */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm font-semibold">📋 食材</Label>
-            <Button variant="ghost" size="sm" onClick={addIngredient} className="text-xs h-7">
-              <Plus size={14} className="mr-1" />添加
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-semibold">📋 食材</Label>
+          <Button variant="ghost" size="sm" onClick={addIngredient} className="text-xs h-7">
+            <Plus size={14} className="mr-1" />添加
+          </Button>
+        </div>
+        {edited.ingredients.map((ing, i) => (
+          <div key={i} className="flex gap-2 items-start">
+            <Input
+              value={ing.name}
+              onChange={(e) => updateIngredient(i, "name", e.target.value)}
+              placeholder="名称"
+              className="h-8 text-sm flex-[2]"
+            />
+            <Input
+              value={ing.amount || ""}
+              onChange={(e) => updateIngredient(i, "amount", e.target.value)}
+              placeholder="用量"
+              className="h-8 text-sm flex-1"
+            />
+            <Input
+              value={ing.prep || ""}
+              onChange={(e) => updateIngredient(i, "prep", e.target.value)}
+              placeholder="处理"
+              className="h-8 text-sm flex-1"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => removeIngredient(i)}
+              className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 shrink-0"
+            >
+              <X size={14} />
             </Button>
           </div>
-          {edited.ingredients.map((ing, i) => (
-            <div key={i} className="flex gap-2 items-start">
-              <Input
-                value={ing.name}
-                onChange={(e) => updateIngredient(i, "name", e.target.value)}
-                placeholder="名称"
-                className="h-8 text-sm flex-[2]"
-              />
-              <Input
-                value={ing.amount || ""}
-                onChange={(e) => updateIngredient(i, "amount", e.target.value)}
-                placeholder="用量"
-                className="h-8 text-sm flex-1"
-              />
-              <Input
-                value={ing.prep || ""}
-                onChange={(e) => updateIngredient(i, "prep", e.target.value)}
-                placeholder="处理"
-                className="h-8 text-sm flex-1"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeIngredient(i)}
-                className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 shrink-0"
-              >
-                <X size={14} />
-              </Button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+        ))}
+      </div>
+
+      <Separator />
 
       {/* ── Seasonings ── */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm font-semibold">🧂 调料</Label>
-            <Button variant="ghost" size="sm" onClick={addSeasoning} className="text-xs h-7">
-              <Plus size={14} className="mr-1" />添加
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-semibold">🧂 调料</Label>
+          <Button variant="ghost" size="sm" onClick={addSeasoning} className="text-xs h-7">
+            <Plus size={14} className="mr-1" />添加
+          </Button>
+        </div>
+        {edited.seasonings.map((s, i) => (
+          <div key={i} className="flex gap-2 items-start">
+            <Input
+              value={s.name}
+              onChange={(e) => updateSeasoning(i, "name", e.target.value)}
+              placeholder="名称"
+              className="h-8 text-sm flex-[2]"
+            />
+            <Input
+              value={s.amount || ""}
+              onChange={(e) => updateSeasoning(i, "amount", e.target.value)}
+              placeholder="用量"
+              className="h-8 text-sm flex-1"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => removeSeasoning(i)}
+              className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 shrink-0"
+            >
+              <X size={14} />
             </Button>
           </div>
-          {edited.seasonings.map((s, i) => (
-            <div key={i} className="flex gap-2 items-start">
+        ))}
+        {edited.seasonings.length === 0 && (
+          <p className="text-xs text-gray-400 text-center py-2">暂无调料，点击添加</p>
+        )}
+      </div>
+
+      <Separator />
+
+      {/* ── Steps ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-semibold">📝 烹饪步骤</Label>
+          <Button variant="ghost" size="sm" onClick={addStep} className="text-xs h-7">
+            <Plus size={14} className="mr-1" />添加步骤
+          </Button>
+        </div>
+        {edited.steps.map((step, i) => (
+          <div key={i} className="border rounded-lg p-3 space-y-2 bg-gray-50/50">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-500">步骤 {i + 1}</span>
+              <div className="flex gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => moveStep(i, -1)}
+                  disabled={i === 0}
+                  className="h-6 w-6 p-0 text-gray-400"
+                >
+                  ↑
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => moveStep(i, 1)}
+                  disabled={i === edited.steps.length - 1}
+                  className="h-6 w-6 p-0 text-gray-400"
+                >
+                  ↓
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeStep(i)}
+                  className="h-6 w-6 p-0 text-gray-400 hover:text-red-500"
+                >
+                  <X size={14} />
+                </Button>
+              </div>
+            </div>
+            <div className="flex gap-2">
               <Input
-                value={s.name}
-                onChange={(e) => updateSeasoning(i, "name", e.target.value)}
-                placeholder="名称"
+                value={step.title}
+                onChange={(e) => updateStep(i, "title", e.target.value)}
+                placeholder="步骤标题"
                 className="h-8 text-sm flex-[2]"
               />
               <Input
-                value={s.amount || ""}
-                onChange={(e) => updateSeasoning(i, "amount", e.target.value)}
-                placeholder="用量"
+                value={step.time || ""}
+                onChange={(e) => updateStep(i, "time", e.target.value)}
+                placeholder="耗时"
                 className="h-8 text-sm flex-1"
               />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeSeasoning(i)}
-                className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 shrink-0"
-              >
-                <X size={14} />
-              </Button>
             </div>
-          ))}
-          {edited.seasonings.length === 0 && (
-            <p className="text-xs text-gray-400 text-center py-2">暂无调料，点击添加</p>
-          )}
-        </CardContent>
-      </Card>
+            <Input
+              value={step.content}
+              onChange={(e) => updateStep(i, "content", e.target.value)}
+              placeholder="详细说明..."
+              className="h-8 text-sm"
+            />
+          </div>
+        ))}
+      </div>
 
-      {/* ── Steps ── */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm font-semibold">📝 烹饪步骤</Label>
-            <Button variant="ghost" size="sm" onClick={addStep} className="text-xs h-7">
-              <Plus size={14} className="mr-1" />添加步骤
+      <Separator />
+
+      {/* ── Tips ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-semibold">💡 小贴士</Label>
+          <Button variant="ghost" size="sm" onClick={addTip} className="text-xs h-7">
+            <Plus size={14} className="mr-1" />添加
+          </Button>
+        </div>
+        {edited.tips.map((tip, i) => (
+          <div key={i} className="flex gap-2">
+            <Input
+              value={tip}
+              onChange={(e) => updateTip(i, e.target.value)}
+              placeholder="小贴士"
+              className="h-8 text-sm"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => removeTip(i)}
+              className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 shrink-0"
+            >
+              <X size={14} />
             </Button>
           </div>
-          {edited.steps.map((step, i) => (
-            <div key={i} className="border rounded-lg p-3 space-y-2 bg-gray-50/50">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-500">步骤 {i + 1}</span>
-                <div className="flex gap-0.5">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => moveStep(i, -1)}
-                    disabled={i === 0}
-                    className="h-6 w-6 p-0 text-gray-400"
-                  >
-                    ↑
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => moveStep(i, 1)}
-                    disabled={i === edited.steps.length - 1}
-                    className="h-6 w-6 p-0 text-gray-400"
-                  >
-                    ↓
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeStep(i)}
-                    className="h-6 w-6 p-0 text-gray-400 hover:text-red-500"
-                  >
-                    <X size={14} />
-                  </Button>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={step.title}
-                  onChange={(e) => updateStep(i, "title", e.target.value)}
-                  placeholder="步骤标题"
-                  className="h-8 text-sm flex-[2]"
-                />
-                <Input
-                  value={step.time || ""}
-                  onChange={(e) => updateStep(i, "time", e.target.value)}
-                  placeholder="耗时"
-                  className="h-8 text-sm flex-1"
-                />
-              </div>
-              <Input
-                value={step.content}
-                onChange={(e) => updateStep(i, "content", e.target.value)}
-                placeholder="详细说明..."
-                className="h-8 text-sm"
-              />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+        ))}
+      </div>
 
-      {/* ── Tips + Equipment ── */}
-      <div className="grid grid-cols-1 gap-4">
-        <Card>
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">💡 小贴士</Label>
-              <Button variant="ghost" size="sm" onClick={addTip} className="text-xs h-7">
-                <Plus size={14} className="mr-1" />添加
-              </Button>
-            </div>
-            {edited.tips.map((tip, i) => (
-              <div key={i} className="flex gap-2">
-                <Input
-                  value={tip}
-                  onChange={(e) => updateTip(i, e.target.value)}
-                  placeholder="小贴士"
-                  className="h-8 text-sm"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeTip(i)}
-                  className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 shrink-0"
-                >
-                  <X size={14} />
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+      <Separator />
 
-        <Card>
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">🔧 器具</Label>
-              <Button variant="ghost" size="sm" onClick={addEquipment} className="text-xs h-7">
-                <Plus size={14} className="mr-1" />添加
-              </Button>
-            </div>
-            {edited.equipment.map((eq, i) => (
-              <div key={i} className="flex gap-2">
-                <Input
-                  value={eq}
-                  onChange={(e) => updateEquipment(i, e.target.value)}
-                  placeholder="器具名称"
-                  className="h-8 text-sm"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeEquipment(i)}
-                  className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 shrink-0"
-                >
-                  <X size={14} />
-                </Button>
-              </div>
-            ))}
-            {edited.equipment.length === 0 && (
-              <p className="text-xs text-gray-400 text-center py-2">暂无器具</p>
-            )}
-          </CardContent>
-        </Card>
+      {/* ── Equipment ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-semibold">🔧 器具</Label>
+          <Button variant="ghost" size="sm" onClick={addEquipment} className="text-xs h-7">
+            <Plus size={14} className="mr-1" />添加
+          </Button>
+        </div>
+        {edited.equipment.map((eq, i) => (
+          <div key={i} className="flex gap-2">
+            <Input
+              value={eq}
+              onChange={(e) => updateEquipment(i, e.target.value)}
+              placeholder="器具名称"
+              className="h-8 text-sm"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => removeEquipment(i)}
+              className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 shrink-0"
+            >
+              <X size={14} />
+            </Button>
+          </div>
+        ))}
+        {edited.equipment.length === 0 && (
+          <p className="text-xs text-gray-400 text-center py-2">暂无器具</p>
+        )}
       </div>
 
       {/* ── Actions ── */}
